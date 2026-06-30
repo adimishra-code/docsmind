@@ -1,0 +1,25 @@
+# AI Context Files
+AGENTS.md
+AI_MEMORY.md
+ARCHITECTURE_RULES.md
+BENCHMARKS.md
+CLAUDE.md
+DECISIONS.md
+NEXT_STEPS.md
+PROJECT_CONTEXT.md
+
+# Virtual Environments
+venv/
+.env
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+dist/
+coverage/
+
+# Data
+.pytest_cache/
+*.db
+backend/storage/
