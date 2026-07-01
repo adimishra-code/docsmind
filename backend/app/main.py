@@ -27,7 +27,39 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting DocsMind platform backend.")
-    # Initialize connection pools, cache warms, etc.
+    deps = {}
+
+    try:
+        from sqlalchemy import text
+        import app.db.session as db_session
+        async with db_session.AsyncSessionLocal() as conn:
+            await conn.execute(text("SELECT 1"))
+        deps["postgres"] = "ok"
+        logger.info("PostgreSQL connection verified")
+    except Exception as exc:
+        deps["postgres"] = f"unavailable: {exc}"
+        logger.warning("PostgreSQL not reachable on startup", error=str(exc))
+
+    try:
+        from app.db.redis import redis_client
+        await redis_client.ping()
+        deps["redis"] = "ok"
+        logger.info("Redis connection verified")
+    except Exception as exc:
+        deps["redis"] = f"unavailable: {exc}"
+        logger.warning("Redis not reachable on startup", error=str(exc))
+
+    try:
+        from app.services.rag.vector_store import QdrantAdapter
+        qdrant = QdrantAdapter()
+        await qdrant.client.get_collections()
+        deps["qdrant"] = "ok"
+        logger.info("Qdrant connection verified")
+    except Exception as exc:
+        deps["qdrant"] = f"unavailable: {exc}"
+        logger.warning("Qdrant not reachable on startup", error=str(exc))
+
+    app.state.dependency_health = deps
     yield
     logger.info("Shutting down DocsMind platform backend.")
 
@@ -48,6 +80,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         # Generate or extract request correlation ID
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request.state.request_id = request_id
         
         # Bind request context to structlog
         structlog.contextvars.clear_contextvars()
@@ -107,18 +140,24 @@ app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
 
 
 # 5. Global Exception Handlers
+def _get_request_id(request: Request) -> str:
+    return str(getattr(request.state, "request_id", "")) or request.headers.get("X-Request-ID", "")
+
+
 @app.exception_handler(AppError)
 async def domain_exception_handler(request: Request, exc: AppError) -> JSONResponse:
     """Catch application layer exceptions and translate to structured HTTP responses."""
+    request_id = _get_request_id(request)
     logger.warn(
         "Application domain error",
+        request_id=request_id,
         status_code=exc.status_code,
         error_code=exc.code,
         message=exc.message,
     )
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": exc.message, "code": exc.code},
+        content={"error": exc.message, "code": exc.code, "request_id": request_id},
     )
 
 
@@ -128,20 +167,21 @@ async def pydantic_validation_exception_handler(
 ) -> JSONResponse:
     """Translate standard Pydantic schema errors to matching application format."""
     errors = exc.errors()
-    # Format message to be client-friendly
+    request_id = _get_request_id(request)
     error_details = []
     for err in errors:
         loc = " -> ".join(str(l) for l in err["loc"])
         error_details.append(f"{loc}: {err['msg']}")
 
     message = "; ".join(error_details)
-    logger.warn("Request validation failed", errors=errors)
+    logger.warn("Request validation failed", request_id=request_id, errors=errors)
 
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "error": "Validation failed: " + message,
             "code": "validation_error",
+            "request_id": request_id,
             "details": errors,
         },
     )
@@ -151,7 +191,18 @@ async def pydantic_validation_exception_handler(
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
-# 7. Core Health Checks
+# 7. OpenAPI Schema Export
+@app.get("/openapi.json", tags=["system"])
+async def get_openapi_schema():
+    return app.openapi()
+
+# 8. Core Health Checks
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["system"])
-async def health_check() -> dict[str, str]:
-    return {"status": "healthy", "service": settings.APP_NAME}
+async def health_check(request: Request) -> dict:
+    deps = getattr(request.app.state, "dependency_health", {})
+    all_ok = all(v == "ok" for v in deps.values())
+    return {
+        "status": "healthy" if all_ok else "degraded",
+        "service": settings.APP_NAME,
+        "dependencies": deps,
+    }

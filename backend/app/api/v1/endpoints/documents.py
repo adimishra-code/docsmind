@@ -4,18 +4,20 @@ import pathlib
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
+import io
 
 from app.api.deps import CurrentUserDep, DocRepoDep
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.document import Document
 from app.schemas.document import DocumentListResponse, DocumentResponse, DocumentStatusResponse
-from app.services.storage.local import LocalStorage
+from app.services.storage import get_storage_backend
 from app.workers.tasks import process_document_task
 
 router = APIRouter()
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".csv", ".txt", ".md"}
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".csv", ".txt", ".md", ".xlsx", ".xls", ".html", ".htm", ".rtf"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB limit
 
 
@@ -53,7 +55,7 @@ async def upload_document(
         )
 
     # 3. Store file binary using storage service
-    storage = LocalStorage()
+    storage = get_storage_backend()
     # Generate unique folder key using user_id to prevent collision
     storage_key = f"{current_user.id}/{uuid.uuid4()}{extension}"
     storage_path = await storage.upload(file_content, storage_key)
@@ -70,14 +72,60 @@ async def upload_document(
     doc = await doc_repo.create(doc_data)
     await doc_repo.session.commit()
 
-    # 5. Dispatch background parser task to Celery
-    process_document_task.delay(
-        str(doc.id),
-        chunk_strategy="recursive_character",
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-    )
+    # 5. Dispatch background parser task to Celery (with synchronous fallback)
+    try:
+        process_document_task.delay(
+            str(doc.id),
+            chunk_strategy="recursive_character",
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+    except Exception:
+        # Celery not running — process synchronously as fallback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("Celery unavailable, processing document %s synchronously", doc.id)
+        from app.workers.tasks import run_async
+        from app.workers.tasks import async_process_document
+        try:
+            run_async(
+                async_process_document(
+                    document_id_str=str(doc.id),
+                    chunk_strategy="recursive_character",
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                )
+            )
+        except Exception as exc:
+            logger.error("Synchronous processing failed for %s: %s", doc.id, exc)
 
+    return doc
+
+
+@router.patch(
+    "/{document_id}",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Rename a document",
+)
+async def rename_document(
+    document_id: uuid.UUID,
+    doc_repo: DocRepoDep,
+    current_user: CurrentUserDep,
+    body: dict,
+) -> Document:
+    """Rename a document's filename."""
+    doc = await doc_repo.get_by_id_and_user(document_id, current_user.id)
+    if not doc:
+        raise NotFoundError("Document not found.")
+
+    new_name = body.get("filename")
+    if not new_name or not isinstance(new_name, str):
+        raise ValidationError("filename is required.", code="validation_error")
+
+    doc.filename = new_name
+    doc_repo.session.add(doc)
+    await doc_repo.session.commit()
     return doc
 
 
@@ -95,7 +143,8 @@ async def list_documents(
 ) -> dict:
     """Retrieve paginated list of documents owned by current authenticated user."""
     items, total = await doc_repo.get_multi_by_user(current_user.id, skip=skip, limit=limit)
-    return {"items": items, "total": total}
+    page = (skip // limit) + 1 if limit else 1
+    return {"items": items, "total": total, "page": page, "page_size": limit, "total_pages": max(1, -(-total // limit)) if limit else 1}
 
 
 @router.get(
@@ -143,6 +192,41 @@ async def get_document_status(
     }
 
 
+@router.get(
+    "/{document_id}/download",
+    status_code=status.HTTP_200_OK,
+    summary="Download document file",
+)
+async def download_document(
+    document_id: uuid.UUID,
+    doc_repo: DocRepoDep,
+    current_user: CurrentUserDep,
+) -> Response:
+    """Download the original file for a document."""
+    doc = await doc_repo.get_by_id_and_user(document_id, current_user.id)
+    if not doc:
+        raise NotFoundError("Document not found.")
+
+    storage = get_storage_backend()
+    file_content = await storage.download(doc.storage_path)
+
+    media_types = {
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".csv": "text/csv",
+        ".txt": "text/plain",
+        ".md": "text/markdown",
+    }
+    media_type = media_types.get(doc.file_type, "application/octet-stream")
+
+    return StreamingResponse(
+        io.BytesIO(file_content),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'},
+    )
+
+
 @router.delete(
     "/{document_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -152,14 +236,14 @@ async def delete_document(
     document_id: uuid.UUID,
     doc_repo: DocRepoDep,
     current_user: CurrentUserDep,
-) -> None:
+) -> Response:
     """Remove a document record, its split chunks, and delete it from storage."""
     doc = await doc_repo.get_by_id_and_user(document_id, current_user.id)
     if not doc:
         raise NotFoundError("Document not found.")
 
     # 1. Delete binary from storage
-    storage = LocalStorage()
+    storage = get_storage_backend()
     try:
         await storage.delete(doc.storage_path)
     except Exception:
@@ -182,3 +266,4 @@ async def delete_document(
     # 2. Delete database record (cascades automatically to document_chunks table)
     await doc_repo.delete_by_user(document_id, current_user.id)
     await doc_repo.session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

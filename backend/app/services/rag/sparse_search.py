@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any
 import uuid
 
-from rank_bm25 import BM25Okapi
-
 from app.core.logging import get_logger
 from app.services.rag.bm25_manager import BM25IndexManager, simple_tokenizer
 
@@ -31,43 +29,24 @@ class SparseSearcher:
         if not tokenized_query:
             return []
 
-        # Fetch from manager (Redis cached)
-        corpus, metadata = await self.index_manager.get_or_build_corpus(user_id)
+        bm25, metadata = await self.index_manager.get_or_build_index(user_id)
 
-        if not corpus:
+        if not metadata:
             logger.info("No documents found for sparse search scope")
             return []
-            
-        # Scope filtering
-        if document_ids:
-            doc_id_strs = {str(did) for did in document_ids}
-            filtered_corpus = []
-            filtered_metadata = []
-            for c, m in zip(corpus, metadata, strict=True):
-                if m["document_id"] in doc_id_strs:
-                    filtered_corpus.append(c)
-                    filtered_metadata.append(m)
-            corpus = filtered_corpus
-            metadata = filtered_metadata
-            
-            if not corpus:
-                return []
 
-        # Fit BM25 Index
-        bm25 = BM25Okapi(corpus)
-        
-        # Score documents
         scores = bm25.get_scores(tokenized_query)
-        
-        # Compile candidate lists
+
         scored_candidates = []
         for meta, score in zip(metadata, scores, strict=True):
             if score > 0.0:
+                if document_ids and meta.get("document_id"):
+                    if meta["document_id"] not in {str(did) for did in document_ids}:
+                        continue
                 scored_candidates.append({
                     "chunk_id": uuid.UUID(meta["chunk_id"]),
                     "score": float(score),
                     "payload": {
-                        "user_id": meta["user_id"],
                         "document_id": meta["document_id"],
                         "chunk_index": meta["chunk_index"],
                         "page_number": meta["page_number"],
@@ -75,6 +54,5 @@ class SparseSearcher:
                     }
                 })
 
-        # Sort and slice
         scored_candidates.sort(key=lambda x: x["score"], reverse=True)
         return scored_candidates[:limit]

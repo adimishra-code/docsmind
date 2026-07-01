@@ -1,65 +1,139 @@
 import React from 'react';
-import { Search, Bell, Sun, Moon } from 'lucide-react';
+import { useLocation, useNavigate, Link } from 'react-router';
+import { Search, Sun, Moon, LogOut, User, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useTheme } from '@/providers/theme-provider';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useAuthStore } from '@/store/useAuthStore';
+
+const ROUTE_LABELS: Record<string, string> = {
+  dashboard: 'Dashboard',
+  chat: 'Chat',
+  documents: 'Documents',
+  search: 'Search',
+  settings: 'Settings',
+  observability: 'Analytics',
+};
 
 export function TopNavigation() {
   const setCommandPaletteOpen = useLayoutStore((state) => state.setCommandPaletteOpen);
   const { theme, setTheme } = useTheme();
   const clearAuth = useAuthStore((state) => state.clearAuth);
+  const user = useAuthStore((state) => state.user);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const pathSegments = location.pathname.split('/').filter(Boolean);
+  const breadcrumbs = pathSegments.map((segment, i) => ({
+    label: ROUTE_LABELS[segment] ?? segment.charAt(0).toUpperCase() + segment.slice(1),
+    path: '/' + pathSegments.slice(0, i + 1).join('/'),
+    isLast: i === pathSegments.length - 1,
+  }));
+
+  const initials = user?.full_name
+    ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    : user?.email?.[0]?.toUpperCase() ?? 'U';
 
   return (
-    <header className="flex h-14 items-center justify-between border-b px-4 bg-background">
-      <div className="flex items-center gap-4">
-        {/* Breadcrumbs would go here, omitting for brevity or using useLocation */}
-        <div className="text-sm font-medium text-muted-foreground hidden md:block">
-          Workspace / Dashboard
-        </div>
-      </div>
-      
-      <div className="flex items-center gap-2">
-        <Button 
-          variant="outline" 
-          className="relative h-9 w-full justify-start rounded-[0.5rem] bg-muted/50 text-sm text-muted-foreground sm:pr-12 md:w-40 lg:w-64"
+    <header className="flex h-14 items-center justify-between border-b px-6 bg-card shrink-0">
+      {/* Breadcrumbs */}
+      <nav className="flex items-center gap-1.5 text-sm">
+        <Link to="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
+          Home
+        </Link>
+        {breadcrumbs.map((crumb) => (
+          <React.Fragment key={crumb.path}>
+            <span className="text-muted-foreground/50">/</span>
+            {crumb.isLast ? (
+              <span className="font-medium text-foreground">{crumb.label}</span>
+            ) : (
+              <Link to={crumb.path} className="text-muted-foreground hover:text-foreground transition-colors">
+                {crumb.label}
+              </Link>
+            )}
+          </React.Fragment>
+        ))}
+      </nav>
+
+      {/* Right actions */}
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          className="hidden sm:flex h-9 w-full justify-start rounded-md bg-muted/50 text-sm text-muted-foreground sm:pr-12 md:w-48 lg:w-64"
           onClick={() => setCommandPaletteOpen(true)}
         >
-          <span className="hidden lg:inline-flex">Search documentation...</span>
-          <span className="inline-flex lg:hidden">Search...</span>
-          <kbd className="pointer-events-none absolute right-1.5 top-2 hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+          <Search className="mr-2 h-4 w-4 shrink-0" />
+          <span className="truncate">Search...</span>
+          <kbd className="ml-auto pointer-events-none hidden h-5 select-none items-center gap-1 rounded border bg-background px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
             <span className="text-xs">⌘</span>K
           </kbd>
         </Button>
-        
-        <Button variant="ghost" size="icon">
-          <Bell className="h-4 w-4" />
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setCommandPaletteOpen(true)}
+          className="sm:hidden h-9 w-9"
+        >
+          <Search className="h-4 w-4" />
         </Button>
 
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="h-9 w-9 text-muted-foreground hover:text-foreground"
         >
-          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           <span className="sr-only">Toggle theme</span>
         </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-8 w-8 rounded-full ml-2">
+            <Button variant="ghost" className="relative h-9 w-9 rounded-full ml-1">
               <Avatar className="h-8 w-8">
-                <AvatarImage src="" alt="User" />
-                <AvatarFallback>U</AvatarFallback>
+                <AvatarImage src="" alt={user?.full_name ?? ''} />
+                <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+                  {initials}
+                </AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56" align="end" forceMount>
+          <DropdownMenuContent className="w-56" align="end">
+            <div className="flex items-center gap-2 p-2">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src="" alt={user?.full_name ?? ''} />
+                <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user?.full_name ?? 'User'}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email ?? ''}</p>
+              </div>
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => navigate('/settings')}>
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/settings')}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => clearAuth()}>
-              Log out
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

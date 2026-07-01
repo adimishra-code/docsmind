@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import ChatRepoDep, CurrentUserDep
@@ -13,6 +13,7 @@ from app.schemas.chat import (
     ChatMessageCreate,
     ChatSessionCreate,
     ChatSessionDetailResponse,
+    ChatSessionListResponse,
     ChatSessionResponse,
 )
 from app.services.rag.chat import ChatService
@@ -44,6 +45,7 @@ async def create_chat_session(
 
 @router.get(
     "/sessions",
+    response_model=ChatSessionListResponse,
     summary="List all chat sessions",
 )
 async def list_chat_sessions(
@@ -54,7 +56,8 @@ async def list_chat_sessions(
 ) -> dict:
     """Retrieve all conversations created by the user, ordered descending by date."""
     items, total = await chat_repo.get_multi_by_user(current_user.id, skip=skip, limit=limit)
-    return {"items": items, "total": total}
+    page = (skip // limit) + 1 if limit else 1
+    return {"items": items, "total": total, "page": page, "page_size": limit, "total_pages": max(1, -(-total // limit)) if limit else 1}
 
 
 @router.get(
@@ -83,7 +86,7 @@ async def delete_chat_session(
     session_id: uuid.UUID,
     chat_repo: ChatRepoDep,
     current_user: CurrentUserDep,
-) -> None:
+) -> Response:
     """Permanently delete a chat session and its nested transcripts."""
     session = await chat_repo.get_by_id_and_user(session_id, current_user.id)
     if not session:
@@ -91,6 +94,34 @@ async def delete_chat_session(
 
     await chat_repo.delete_by_user(session_id, current_user.id)
     await chat_repo.session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch(
+    "/sessions/{session_id}",
+    response_model=ChatSessionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update a chat session (rename/pin)",
+)
+async def update_chat_session(
+    session_id: uuid.UUID,
+    body: dict,
+    chat_repo: ChatRepoDep,
+    current_user: CurrentUserDep,
+) -> ChatSession:
+    """Rename a chat session title or toggle its pinned state."""
+    session = await chat_repo.get_by_id_and_user(session_id, current_user.id)
+    if not session:
+        raise NotFoundError("Chat session not found.")
+
+    if "title" in body and isinstance(body["title"], str):
+        session.title = body["title"].strip() or "Untitled Chat"
+    if "is_pinned" in body and isinstance(body["is_pinned"], bool):
+        session.is_pinned = body["is_pinned"]
+
+    chat_repo.session.add(session)
+    await chat_repo.session.commit()
+    return session
 
 
 @router.post(

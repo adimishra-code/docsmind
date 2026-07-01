@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  SECRET_KEY: ${{ secrets.SECRET_KEY || 'a2c8e7d1f3b609a4d5e8f71234567890abcdef0123456789abcdef0123456789' }}
+
 jobs:
   backend-lint-test:
     runs-on: ubuntu-latest
@@ -14,33 +17,39 @@ jobs:
         working-directory: ./backend
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python 3.11
       uses: actions/setup-python@v5
       with:
         python-version: "3.11"
         cache: 'pip'
-        
-    - name: Install dependencies
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends tesseract-ocr poppler-utils
+
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-asyncio flake8 mypy
-        
+        pip install pytest pytest-asyncio flake8 mypy pytest-cov
+
     - name: Lint with flake8
       run: |
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-        
+
     - name: Type check with mypy
       run: mypy app/ --ignore-missing-imports || true
-        
+
     - name: Run Pytest
-      run: pytest tests/ -v
+      run: pytest tests/ -v --cov=app --cov-report=term-missing
       env:
+        SECRET_KEY: ${{ env.SECRET_KEY }}
         DATABASE_URL: sqlite+aiosqlite:///:memory:
-        SECRET_KEY: test_secret_key
-        # Exclude OpenAI/Qdrant dependent tests or mock them in pytest
+        REDIS_URL: redis://localhost:6379/0
+        QDRANT_URL: http://localhost:6333
 
   frontend-lint-test:
     runs-on: ubuntu-latest
@@ -49,23 +58,26 @@ jobs:
         working-directory: ./frontend
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '22'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
-        
+
     - name: Install dependencies
       run: npm ci
-      
+
     - name: ESLint
       run: npm run lint || true
-      
+
     - name: Type Check
       run: npx tsc --noEmit
-      
+
+    - name: Run vitest
+      run: npx vitest run --reporter=verbose || true
+
     - name: Build Test
       run: npm run build
 
@@ -75,19 +87,34 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
     - uses: actions/checkout@v4
-    
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
     - name: Build Backend Docker Image
-      run: docker build -t docsmind-backend:latest ./backend
-      
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        tags: docsmind-backend:latest
+        load: true
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
     - name: Build Frontend Docker Image
-      run: docker build -t docsmind-frontend:latest ./frontend
-      
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        tags: docsmind-frontend:latest
+        load: true
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
     - name: Run Security Scan (Trivy)
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: 'docsmind-backend:latest'
         format: 'table'
-        exit-code: '0' # Don't fail build for now
+        exit-code: '0'
         ignore-unfixed: true
         vuln-type: 'os,library'
         severity: 'CRITICAL,HIGH'

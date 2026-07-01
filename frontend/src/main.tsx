@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router'
 import { ThemeProvider } from './providers/theme-provider'
 import { QueryProvider } from './providers/query-provider'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -14,10 +15,14 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <ThemeProvider defaultTheme="system" storageKey="docsmind-ui-theme">
         <QueryProvider>
-          <AppRoutes />
-          <CommandPalette />
-          <BackgroundTaskCenter />
-          <Toaster />
+          {/* BrowserRouter wraps everything so CommandPalette/BackgroundTaskCenter
+              can use useNavigate and other router hooks */}
+          <BrowserRouter>
+            <AppRoutes />
+            <CommandPalette />
+            <BackgroundTaskCenter />
+            <Toaster />
+          </BrowserRouter>
         </QueryProvider>
       </ThemeProvider>
     </ErrorBoundary>

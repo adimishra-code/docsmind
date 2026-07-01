@@ -1,8 +1,8 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/store/useAuthStore';
 
-// We use the backend API URL, default to localhost:8000 for local dev
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// We use the backend API URL, default to localhost:8006 for local dev
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8006';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -65,10 +65,21 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {}, { withCredentials: true });
-        // Assume backend returns new access_token
+        const refreshToken = localStorage.getItem('docsmind-refresh-token');
+        if (!refreshToken) {
+          throw new Error('No refresh token available');
+        }
+        const { data } = await axios.post(
+          `${API_BASE_URL}/api/v1/auth/refresh`,
+          { refresh_token: refreshToken },
+          { headers: { 'Content-Type': 'application/json' } }
+        );
         const newAccessToken = data.access_token;
+        const newRefreshToken = data.refresh_token;
         useAuthStore.getState().setAccessToken(newAccessToken);
+        if (newRefreshToken) {
+          localStorage.setItem('docsmind-refresh-token', newRefreshToken);
+        }
 
         if (originalRequest.headers) {
           originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
@@ -78,7 +89,8 @@ api.interceptors.response.use(
       } catch (err) {
         processQueue(err, null);
         useAuthStore.getState().clearAuth();
-        // Redirect logic handled by router guard or event listener
+        localStorage.removeItem('docsmind-refresh-token');
+        window.location.href = '/login';
         return Promise.reject(err);
       } finally {
         isRefreshing = false;

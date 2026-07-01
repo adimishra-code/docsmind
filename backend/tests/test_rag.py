@@ -9,6 +9,9 @@ import uuid
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+
 from app.db.session import AsyncSessionLocal
 from app.models.chat import ChatMessage, ChatSession
 from app.models.document import Document, DocumentChunk
@@ -17,7 +20,7 @@ from app.services.rag.citations import CitationEngine
 from app.services.rag.embeddings import LocalEmbeddingProvider, OpenAIEmbeddingProvider
 from app.services.rag.evaluator import RAGEvaluator
 from app.services.rag.retriever import HybridRetriever, reciprocal_rank_fusion
-from app.services.rag.vector_db import QdrantService
+from app.services.rag.vector_store import QdrantAdapter
 
 
 # --------------------------------------------------------------------------- #
@@ -90,6 +93,7 @@ async def test_openai_embedding_provider_batching() -> None:
 @pytest.mark.asyncio
 async def test_local_embedding_provider() -> None:
     """Verify local SentenceTransformer embeddings dimension."""
+    pytest.importorskip("sentence_transformers")
     provider = LocalEmbeddingProvider(model_name="all-MiniLM-L6-v2")
     # MiniLM dimensions is 384
     query_vector = await provider.embed_query("Search text query")
@@ -106,7 +110,7 @@ async def test_local_embedding_provider() -> None:
 @pytest.mark.asyncio
 async def test_qdrant_multi_tenant_isolation() -> None:
     """Test Qdrant CRUD and verify user B cannot query user A's document points."""
-    qdrant = QdrantService()
+    qdrant = QdrantAdapter()
     collection_name = "test_chunks"
     
     # 1. Provision collection
@@ -235,11 +239,13 @@ async def test_citation_parsing_and_excerpt_mapping(
 # End-to-End Chat API & Streaming Integration Tests
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
-@patch("openai.resources.chat.completions.AsyncCompletions.create", new_callable=AsyncMock)
+@patch("app.services.rag.reranker.CrossEncoderReranker.rerank", new_callable=AsyncMock)
+@patch("langchain_openai.chat_models.base.ChatOpenAI._agenerate", new_callable=AsyncMock)
 @patch("openai.resources.embeddings.AsyncEmbeddings.create", new_callable=AsyncMock)
 async def test_streaming_chat_e2e_completions(
     mock_embed: AsyncMock,
     mock_chat: AsyncMock,
+    mock_rerank: AsyncMock,
     client: AsyncClient,
 ) -> None:
     """Test end-to-end chat creation, RAG streaming, telemetry log writing, and deletion."""
@@ -272,9 +278,29 @@ async def test_streaming_chat_e2e_completions(
     session_id = session_data["id"]
 
     # 4. Stream Message Response
-    # Mock LLM generation stream
-    tokens = ["This", " is", " verified", " content", " matching", " manual", " [1]."]
-    mock_chat.return_value = async_stream_generator(tokens)
+    # Mock reranker to pass candidates through unchanged (sentence_transformers optional dep)
+    mock_rerank.side_effect = lambda query, candidates: candidates
+
+    # Mock LLM non-streaming calls (planner node)
+    def _make_chat_result(content: str) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+
+    mock_chat.side_effect = [
+        _make_chat_result("Plan: retrieve and synthesize information."),
+        _make_chat_result("This is verified content matching manual [1]."),
+    ]
+
+    # Mock LLM streaming call (reasoner node uses llm.astream)
+    # _astream is an async generator; AsyncMock can't replicate it, so patch class-level.
+    from langchain_openai.chat_models.base import ChatOpenAI as _ChatOpenAI
+    _original_astream = _ChatOpenAI._astream
+
+    async def _mock_astream(self, *args, **kwargs):
+            text = "This is verified content matching manual [1]."
+            for token in text.split(" "):
+                yield ChatGenerationChunk(message=AIMessageChunk(content=token + " "))
+
+    _ChatOpenAI._astream = _mock_astream
 
     message_payload = {
         "content": "Verify contextual information",
@@ -326,7 +352,7 @@ async def test_streaming_chat_e2e_completions(
         assert len(messages[1].citations) == 1
 
         # Check telemetry logs
-        log_stmt = select(UsageLog).where(UsageLog.action == "chat_completion")
+        log_stmt = select(UsageLog).where(UsageLog.action == "agent_completion")
         log_res = await db.execute(log_stmt)
         logs = log_res.scalars().all()
         assert len(logs) == 1
@@ -342,13 +368,32 @@ async def test_streaming_chat_e2e_completions(
     assert analytics_resp.status_code == 200
     analytics_data = analytics_resp.json()
     assert analytics_data["total_requests"] >= 1
-    assert "chat_completion" in analytics_data["latencies_breakdown"]
+    assert "agent_completion" in analytics_data["latencies_breakdown"]
+
+    # 6.5. Update (Rename / Pin) Session
+    patch_resp = await client.patch(
+        f"/chat/sessions/{session_id}",
+        json={"title": "Renamed Testing Chat", "is_pinned": True},
+        headers=headers,
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["title"] == "Renamed Testing Chat"
+    assert patch_resp.json()["is_pinned"] is True
+
+    # 6.6. Verify rename persisted
+    get_resp = await client.get(f"/chat/sessions/{session_id}", headers=headers)
+    assert get_resp.status_code == 200
+    assert get_resp.json()["title"] == "Renamed Testing Chat"
+    assert get_resp.json()["is_pinned"] is True
 
     # 7. Delete Session
     del_resp = await client.delete(f"/chat/sessions/{session_id}", headers=headers)
     assert del_resp.status_code == 204
 
     # Clean up local mock vector databases
-    qdrant = QdrantService()
+    qdrant = QdrantAdapter()
     if qdrant.client:
-        qdrant.client.close()
+        await qdrant.client.close()
+
+    # Restore original async generator
+    _ChatOpenAI._astream = _original_astream

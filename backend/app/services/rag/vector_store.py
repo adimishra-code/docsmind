@@ -66,16 +66,24 @@ class QdrantAdapter(VectorStoreInterface):
                 logger.info("Initializing SHARED in-memory Async Qdrant client for testing")
                 QdrantAdapter._shared_client = AsyncQdrantClient(":memory:")
             self.client = QdrantAdapter._shared_client
-        elif settings.ENVIRONMENT == "development":
-            os.makedirs(settings.QDRANT_STORAGE_PATH, exist_ok=True)
-            logger.info("Initializing local disk Async Qdrant client", path=settings.QDRANT_STORAGE_PATH)
-            self.client = AsyncQdrantClient(path=settings.QDRANT_STORAGE_PATH)
-        else:
-            logger.info("Initializing remote Async Qdrant client", url=settings.QDRANT_URL)
-            self.client = AsyncQdrantClient(
-                url=settings.QDRANT_URL,
-                api_key=settings.QDRANT_API_KEY,
-            )
+            return
+
+        if settings.QDRANT_URL:
+            try:
+                client = AsyncQdrantClient(
+                    url=settings.QDRANT_URL,
+                    api_key=settings.QDRANT_API_KEY,
+                )
+                logger.info("Initializing remote Async Qdrant client", url=settings.QDRANT_URL)
+                self.client = client
+                return
+            except Exception:
+                logger.warning("Qdrant remote URL unreachable, falling back to local disk",
+                               url=settings.QDRANT_URL)
+
+        os.makedirs(settings.QDRANT_STORAGE_PATH, exist_ok=True)
+        logger.info("Initializing local disk Async Qdrant client", path=settings.QDRANT_STORAGE_PATH)
+        self.client = AsyncQdrantClient(path=settings.QDRANT_STORAGE_PATH)
 
     async def create_collection_if_not_exists(
         self, collection_name: str, vector_size: int

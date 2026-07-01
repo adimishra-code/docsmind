@@ -4,23 +4,35 @@ from app.core.config import settings
 from app.services.rag.prompt_guard import PromptGuard
 
 async def reasoner_node(state: AgentState) -> dict:
-    """
-    Synthesizes the retrieved information into a structured reasoning chain.
-    """
     chunks = state.get("retrieved_chunks", [])
     messages = state.get("messages", [])
-    
+
     if not messages:
         return {}
 
     user_query = messages[-1].content
+    feedback = state.get("verification_feedback", "")
+
     system_prompt = PromptGuard.build_grounded_system_prompt(chunks)
-    
-    llm = ChatOpenAI(model="gpt-4o-mini", api_key=settings.OPENAI_API_KEY, temperature=0.0)
-    
-    # We ask the LLM to output its raw reasoning as a draft string
+
+    if feedback:
+        system_prompt += (
+            f"\n\n--- Previous Critique to address ---\n"
+            f"{feedback}\n"
+            f"--- End Critique ---\n\n"
+            f"Revise your response to address each point above."
+        )
+
+    kwargs = {"model": settings.LLM_MODEL, "api_key": settings.OPENAI_API_KEY, "temperature": 0.0}
+    if settings.LLM_BASE_URL:
+        kwargs["base_url"] = settings.LLM_BASE_URL
+    llm = ChatOpenAI(**kwargs)
+
     prompt = f"{system_prompt}\n\nUser Query: {user_query}\n\nDraft a comprehensive response based ONLY on the evidence above."
-    
-    response = await llm.ainvoke(prompt)
-    
-    return {"final_response": response.content} # We store it in final_response temporarily for the verifier to check
+
+    tokens = []
+    async for chunk in llm.astream(prompt):
+        if chunk.content:
+            tokens.append(chunk.content)
+
+    return {"final_response": "".join(tokens)}

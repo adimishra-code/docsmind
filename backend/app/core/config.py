@@ -1,14 +1,8 @@
-"""Centralised, typed application configuration.
-
-All runtime configuration flows through a single ``Settings`` object loaded from
-environment variables (12-factor). Nothing else in the codebase reads
-``os.environ`` directly — that keeps configuration testable and the surface
-area of "magic strings" close to zero.
-"""
-
+"""Centralised typed application configuration."""
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, PostgresDsn, computed_field, field_validator
@@ -16,69 +10,105 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["development", "staging", "production"]
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
     )
 
-    # ---- Application ----
     APP_NAME: str = "DocsMind"
     ENVIRONMENT: Environment = "development"
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
     BACKEND_CORS_ORIGINS: list[str] = Field(default_factory=list)
+    FRONTEND_URL: str = "http://localhost:5173"
 
-    # ---- Security ----
     SECRET_KEY: str = Field(min_length=32)
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     JWT_ALGORITHM: str = "HS256"
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
 
-    # ---- PostgreSQL ----
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "docsmind"
     POSTGRES_PASSWORD: str = "docsmind"
     POSTGRES_DB: str = "docsmind"
 
-    # ---- Redis ----
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
+
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
+    REDIS_MAX_CONNECTIONS: int = 50
 
-    # ---- Rate limiting ----
     RATE_LIMIT_PER_MINUTE: int = 120
 
-    # ---- AI & Vector Search ----
     OPENAI_API_KEY: str = "mock-key-for-development"
+    LLM_BASE_URL: str | None = None
+    LLM_MODEL: str = "gpt-4o-mini"
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str | None = None
     QDRANT_STORAGE_PATH: str = "storage/qdrant"
-    EMBEDDING_PROVIDER: str = "openai"  # openai, sentence_transformers
+    EMBEDDING_PROVIDER: str = "openai"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     RERANK_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+    STORAGE_PROVIDER: str = "local"
+    S3_BUCKET_NAME: str = "docsmind"
+    S3_REGION: str = "us-east-1"
+    S3_ACCESS_KEY_ID: str | None = None
+    S3_SECRET_ACCESS_KEY: str | None = None
+    S3_ENDPOINT_URL: str | None = None
+
+    OCR_MIN_CHARS_THRESHOLD: int = 300
+    OCR_ENABLE_PREPROCESSING: bool = True
+    OCR_SCALE_FACTOR: int = 2
+
+    LOGIN_MAX_ATTEMPTS: int = 5
+    LOGIN_LOCKOUT_MINUTES: int = 15
+
+    # ---- SMTP / Email ----
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "DocsMind"
+    SMTP_TLS: bool = True
+    EMAILS_ENABLED: bool = True
+
+    # ---- Google OAuth ----
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8006/api/v1/auth/google/callback"
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
     def _split_cors(cls, value: str | list[str]) -> list[str]:
-        """Accept a comma-separated string from .env or a real list from code."""
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
+    @property
+    def google_oauth_enabled(self) -> bool:
+        return bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET)
+
+    @computed_field
     @property
     def database_url(self) -> str:
-        """Async DSN used by the application (asyncpg driver)."""
         return str(
             PostgresDsn.build(
                 scheme="postgresql+asyncpg",
@@ -90,10 +120,9 @@ class Settings(BaseSettings):
             )
         )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def sync_database_url(self) -> str:
-        """Sync DSN used by Alembic migrations (psycopg v3 driver)."""
         return str(
             PostgresDsn.build(
                 scheme="postgresql+psycopg",
@@ -105,21 +134,15 @@ class Settings(BaseSettings):
             )
         )
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @property
     def redis_url(self) -> str:
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+        return "redis://{0}:{1}/{2}".format(self.REDIS_HOST, self.REDIS_PORT, self.REDIS_DB)
 
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return a process-wide singleton.
-
-    ``lru_cache`` makes this cheap to call from anywhere (including FastAPI
-    dependencies) while ensuring ``.env`` is parsed exactly once. Tests override
-    the cache via ``app.dependency_overrides`` or by clearing it.
-    """
-    return Settings()  # type: ignore[call-arg]
+    return Settings()
 
 
 settings = get_settings()

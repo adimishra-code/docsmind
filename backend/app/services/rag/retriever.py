@@ -4,7 +4,6 @@ import asyncio
 from typing import Any
 import uuid
 
-from openai import AsyncOpenAI
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -13,6 +12,7 @@ import app.db.session as db_session
 from app.models.document import DocumentChunk
 from app.services.rag.bm25_manager import BM25IndexManager
 from app.services.rag.embeddings import get_embedding_provider
+from app.services.rag.llm_client import get_llm_client
 from app.services.rag.reranker import CrossEncoderReranker
 from app.services.rag.sparse_search import SparseSearcher
 from app.services.rag.vector_store import QdrantAdapter, VectorStoreInterface
@@ -72,7 +72,7 @@ class HybridRetriever:
         self.index_manager = BM25IndexManager(redis_client)
         self.sparse_searcher = SparseSearcher(self.index_manager)
         self.reranker = CrossEncoderReranker()
-        self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self.openai_client = get_llm_client()
         self.collection_name = "document_chunks"
 
     async def retrieve(
@@ -101,10 +101,14 @@ class HybridRetriever:
         sparse_tasks = []
 
         # Make sure the collection is ready in Qdrant (in-memory or remote)
-        # Assuming size 1536 for OpenAI small-embeddings, dynamically loaded
-        vector_size = 1536
-        if settings.EMBEDDING_PROVIDER != "openai":
-            vector_size = 1024  # default for bge-large/instructor models
+        try:
+            sample_vector = await self.embedding_provider.embed_query("test")
+            vector_size = len(sample_vector)
+        except Exception as exc:
+            logger.warning("Failed to dynamically detect vector size. Falling back to default.", error=str(exc))
+            vector_size = 1536
+            if settings.EMBEDDING_PROVIDER != "openai":
+                vector_size = 1024
         await self.vector_store.create_collection_if_not_exists(self.collection_name, vector_size)
 
         for q in queries:

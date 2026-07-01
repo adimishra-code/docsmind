@@ -17,7 +17,25 @@ class UserRepository(BaseRepository[User]):
         """Fetch user by unique email address (case-insensitive)."""
         query = select(User).where(User.email == email.lower())
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()  # SQLAlchemy 2.0 returns scalar value or None
+        return result.scalar_one_or_none()
+
+    async def get_by_verification_token(self, token: str) -> User | None:
+        """Fetch user by email verification token."""
+        query = select(User).where(User.email_verification_token == token)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_by_google_id(self, google_id: str) -> User | None:
+        """Fetch user by their Google OAuth subject ID."""
+        query = select(User).where(User.google_id == google_id)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_by_reset_token(self, token: str) -> User | None:
+        """Fetch user by password reset token."""
+        query = select(User).where(User.password_reset_token == token)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
 
 
 class RefreshTokenRepository(BaseRepository[RefreshToken]):

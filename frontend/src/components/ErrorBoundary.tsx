@@ -1,6 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
-import { AlertCircle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
 interface Props {
   children?: ReactNode;
@@ -29,13 +29,15 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="flex flex-col h-screen w-full items-center justify-center bg-background p-4 text-center">
-          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Something went wrong</h1>
-          <p className="text-muted-foreground max-w-md mb-6">
-            An unexpected error occurred in the application. We've logged this issue.
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 mb-4">
+            <AlertTriangle className="h-6 w-6 text-destructive" />
+          </div>
+          <h1 className="text-lg font-semibold mb-1">Something went wrong</h1>
+          <p className="text-sm text-muted-foreground max-w-sm mb-6">
+            An unexpected error occurred. We've logged this issue.
           </p>
-          <Button onClick={() => window.location.reload()}>
-            Reload Page
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            Reload page
           </Button>
         </div>
       );

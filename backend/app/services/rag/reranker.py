@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from sentence_transformers import CrossEncoder
-
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -17,11 +15,12 @@ class CrossEncoderReranker:
     def __init__(self, model_name: str | None = None) -> None:
         self.model_name = model_name or settings.RERANK_MODEL
         logger.info("Initializing CrossEncoder reranker", model=self.model_name)
-        self._model: CrossEncoder | None = None
+        self._model: Any = None
 
     @property
-    def model(self) -> CrossEncoder:
+    def model(self) -> Any:
         if self._model is None:
+            from sentence_transformers import CrossEncoder
             self._model = CrossEncoder(self.model_name)
         return self._model
 

@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/command';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useNavigate } from 'react-router';
-import { LayoutDashboard, MessageSquare, FileText, Settings, Moon, Sun } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, FileText, Search, BarChart3, Settings, Moon, Sun } from 'lucide-react';
 import { useTheme } from '@/providers/theme-provider';
 
 export function CommandPalette() {
@@ -37,7 +37,7 @@ export function CommandPalette() {
 
   return (
     <CommandDialog open={isCommandPaletteOpen} onOpenChange={setCommandPaletteOpen}>
-      <CommandInput placeholder="Type a command or search..." />
+      <CommandInput placeholder="Search or jump to..." />
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>
         <CommandGroup heading="Navigation">
@@ -47,11 +47,19 @@ export function CommandPalette() {
           </CommandItem>
           <CommandItem onSelect={() => runCommand(() => navigate('/chat'))}>
             <MessageSquare className="mr-2 h-4 w-4" />
-            <span>Chats</span>
+            <span>Chat</span>
           </CommandItem>
           <CommandItem onSelect={() => runCommand(() => navigate('/documents'))}>
             <FileText className="mr-2 h-4 w-4" />
             <span>Documents</span>
+          </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => navigate('/search'))}>
+            <Search className="mr-2 h-4 w-4" />
+            <span>Search</span>
+          </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => navigate('/observability'))}>
+            <BarChart3 className="mr-2 h-4 w-4" />
+            <span>Analytics</span>
           </CommandItem>
         </CommandGroup>
         <CommandSeparator />
@@ -59,12 +67,10 @@ export function CommandPalette() {
           <CommandItem onSelect={() => runCommand(() => navigate('/settings'))}>
             <Settings className="mr-2 h-4 w-4" />
             <span>Settings</span>
-            <CommandShortcut>⌘S</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => runCommand(() => setTheme(theme === 'dark' ? 'light' : 'dark'))}>
             {theme === 'dark' ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
-            <span>Toggle Theme</span>
-            <CommandShortcut>⌘T</CommandShortcut>
+            <span>Toggle theme</span>
           </CommandItem>
         </CommandGroup>
       </CommandList>

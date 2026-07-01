@@ -2,62 +2,59 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { observabilityApi } from '@/services/observabilityApi';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export function LLMMetrics() {
   const { data, isLoading } = useQuery({
-    queryKey: ['llm-metrics'],
-    queryFn: () => observabilityApi.getLLMMetrics('7d')
+    queryKey: ['analytics-summary'],
+    queryFn: () => observabilityApi.getSummary(),
   });
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return <div className="space-y-4"><Skeleton className="h-40 w-full" /><Skeleton className="h-80 w-full" /></div>;
   }
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-4xl font-bold">${data.totalCost.toFixed(2)}</CardTitle>
-            <CardDescription>Total API Cost (7d)</CardDescription>
+            <CardTitle className="text-2xl font-bold">${(data?.cumulative_cost_usd ?? 0).toFixed(2)}</CardTitle>
+            <CardDescription>Total Cost</CardDescription>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-4xl font-bold">{(data.totalTokens / 1000000).toFixed(1)}M</CardTitle>
+            <CardTitle className="text-2xl font-bold">{(data?.total_tokens_consumed ?? 0).toLocaleString()}</CardTitle>
             <CardDescription>Total Tokens</CardDescription>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-4xl font-bold">{data.averageLatency}s</CardTitle>
-            <CardDescription>Average Request Latency</CardDescription>
+            <CardTitle className="text-2xl font-bold">{(data?.average_latency_ms ?? 0).toFixed(0)}ms</CardTitle>
+            <CardDescription>Average Latency</CardDescription>
           </CardHeader>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Cost Over Time</CardTitle>
-          <CardDescription>Daily breakdown of LLM API expenses.</CardDescription>
-        </CardHeader>
-        <CardContent className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data.costOverTime}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground)/0.2)" />
-              <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" />
-              <YAxis stroke="hsl(var(--muted-foreground))" tickFormatter={(val) => `$${val}`} />
-              <Tooltip 
-                contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
-                formatter={(value: number) => [`$${value}`, 'Cost']}
-              />
-              <Line type="monotone" dataKey="cost" stroke="hsl(var(--primary))" strokeWidth={2} activeDot={{ r: 8 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      {data?.latencies_breakdown && Object.keys(data.latencies_breakdown).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Per-Action Latency</CardTitle>
+            <CardDescription>Average latency by request type.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {Object.entries(data.latencies_breakdown).map(([action, latency]) => (
+                <div key={action} className="flex items-center justify-between">
+                  <span className="text-sm capitalize">{action.replace('_', ' ')}</span>
+                  <span className="text-sm font-medium">{(latency as number).toFixed(0)}ms</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

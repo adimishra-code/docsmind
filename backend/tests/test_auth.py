@@ -13,9 +13,8 @@ async def test_register_user_success(client: AsyncClient) -> None:
     )
     assert response.status_code == 201
     data = response.json()
-    assert data["email"] == "newuser@example.com"
-    assert "id" in data
-    assert "hashed_password" not in data
+    assert "message" in data
+    assert "Registration successful" in data["message"]
 
 
 @pytest.mark.asyncio
@@ -196,3 +195,97 @@ async def test_logout(client: AsyncClient) -> None:
         json={"refresh_token": refresh_token},
     )
     assert refresh_resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_update_profile(client: AsyncClient) -> None:
+    """Test updating the current user's profile display name."""
+    await client.post(
+        "/auth/register",
+        json={"email": "updateprofile@example.com", "password": "securepassword123"},
+    )
+    login_resp = await client.post(
+        "/auth/login",
+        json={"email": "updateprofile@example.com", "password": "securepassword123"},
+    )
+    access_token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    # Verify initial name is null/empty
+    me_resp = await client.get("/auth/me", headers=headers)
+    assert me_resp.json()["full_name"] is None
+
+    # Update name
+    update_resp = await client.patch(
+        "/auth/me",
+        headers=headers,
+        json={"full_name": "New Name"},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["full_name"] == "New Name"
+
+    # Verify update persisted
+    me_resp2 = await client.get("/auth/me", headers=headers)
+    assert me_resp2.json()["full_name"] == "New Name"
+
+
+@pytest.mark.asyncio
+async def test_password_reset_flow(client: AsyncClient) -> None:
+    """Test full forgot-password, verify, and reset-password flow."""
+    email = "resetpwd@example.com"
+    await client.post(
+        "/auth/register",
+        json={"email": email, "password": "oldpassword123"},
+    )
+
+    # 1. Forgot Password Request
+    forgot_resp = await client.post(
+        "/auth/forgot-password",
+        json={"email": email},
+    )
+    assert forgot_resp.status_code == 200
+    assert "receive a password reset link" in forgot_resp.json()["message"]
+
+    # Since emails are mocked/disabled, we need to extract the token directly from database
+    from app.db.session import AsyncSessionLocal
+    from app.models.user import User
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as session:
+        query = select(User).where(User.email == email)
+        res = await session.execute(query)
+        db_user = res.scalar_one()
+        token = db_user.password_reset_token
+        assert token is not None
+
+    # 2. Verify Token
+    verify_resp = await client.get(
+        "/auth/reset-password/verify",
+        params={"token": token},
+    )
+    assert verify_resp.status_code == 200
+    assert verify_resp.json()["message"] == "Token is valid."
+
+    # 3. Reset Password
+    reset_resp = await client.post(
+        "/auth/reset-password",
+        json={"token": token, "new_password": "newpassword123"},
+    )
+    assert reset_resp.status_code == 200
+    assert "reset successfully" in reset_resp.json()["message"]
+
+    # 4. Verify login works with new password
+    login_resp = await client.post(
+        "/auth/login",
+        json={"email": email, "password": "newpassword123"},
+    )
+    assert login_resp.status_code == 200
+    assert "access_token" in login_resp.json()
+
+    # Verify login fails with old password
+    login_resp_old = await client.post(
+        "/auth/login",
+        json={"email": email, "password": "oldpassword123"},
+    )
+    assert login_resp_old.status_code == 401
+

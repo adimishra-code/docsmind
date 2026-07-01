@@ -37,7 +37,7 @@ export function KnowledgeEngine() {
   const renderAdapter = () => {
     if (document.file_type === 'pdf') {
       // Use mock URL for now if backend doesn't serve actual file URL, or build it
-      const fileUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/documents/${id}/download`;
+      const fileUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:8006'}/api/v1/documents/${id}/download`;
       return <PDFAdapter url={fileUrl} />;
     }
     // Fallback or other adapters
@@ -46,7 +46,7 @@ export function KnowledgeEngine() {
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-muted/10">
-      <ResizablePanelGroup direction="horizontal">
+      <ResizablePanelGroup orientation="horizontal">
         <ResizablePanel defaultSize={100} className="relative flex-1">
           {renderAdapter()}
         </ResizablePanel>

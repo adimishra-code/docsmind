@@ -1,11 +1,12 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { LucideIcon } from 'lucide-react';
 import { cn } from '@/utils';
 
 interface MetricCardProps {
   title: string;
-  value: string | number;
+  value: string | number | null;
   icon: LucideIcon;
   trend?: {
     value: number;
@@ -22,7 +23,9 @@ export function MetricCard({ title, value, icon: Icon, trend, className }: Metri
         <Icon className="w-4 h-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+        <div className="text-2xl font-bold">
+          {value === null ? <Skeleton className="h-8 w-16" /> : value}
+        </div>
         {trend && (
           <p className={cn("text-xs mt-1", trend.isPositive ? "text-success" : "text-destructive")}>
             {trend.isPositive ? "+" : "-"}{Math.abs(trend.value)}% from last month

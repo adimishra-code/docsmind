@@ -33,3 +33,6 @@ class DocumentStatusResponse(BaseModel):
 class DocumentListResponse(BaseModel):
     items: list[DocumentResponse]
     total: int
+    page: int = 1
+    page_size: int = 100
+    total_pages: int = 1

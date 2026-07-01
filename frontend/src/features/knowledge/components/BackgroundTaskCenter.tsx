@@ -25,7 +25,7 @@ export function BackgroundTaskCenter() {
         if (task.id.startsWith('temp-')) continue;
         try {
           const res = await documentsApi.getStatus(task.id);
-          updateTask(task.id, { status: res.status as any, progress: res.progress });
+          updateTask(task.id, { status: res.status as any, progress: (res as any).progress_pct ?? (res.status === 'ready' ? 100 : 50) });
         } catch (error) {
           updateTask(task.id, { status: 'failed', error: 'Failed to fetch status' });
         }

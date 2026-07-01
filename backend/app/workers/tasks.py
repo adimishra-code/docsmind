@@ -15,7 +15,7 @@ from app.services.parser.chunker import get_chunker
 from app.services.parser.cleaner import sanitize_text
 from app.services.parser.metadata import MetadataExtractor
 from app.services.parser.parsers import get_parser_for_file_type
-from app.services.storage.local import LocalStorage
+from app.services.storage import get_storage_backend
 from app.workers.celery_app import celery
 
 logger = get_logger(__name__)
@@ -46,8 +46,8 @@ async def async_process_document(
         await session.refresh(doc)
 
         try:
-            # 3. Retrieve binary content from local/S3 storage
-            storage = LocalStorage()
+            # 3. Retrieve binary content from storage backend
+            storage = get_storage_backend()
             file_bytes = await storage.download(doc.storage_path)
 
             # 4. Route file binary to appropriate format parser

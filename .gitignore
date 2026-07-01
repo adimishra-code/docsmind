@@ -11,6 +11,8 @@ PROJECT_CONTEXT.md
 # Virtual Environments
 venv/
 .env
+**/.env
+*.env.local
 __pycache__/
 *.pyc
 
@@ -23,3 +25,16 @@ coverage/
 .pytest_cache/
 *.db
 backend/storage/
+
+# Logs & Temp files
+*.log
+*.err
+backend/stdout.log
+backend/stderr.log
+backend/backend.log
+backend/backend.err
+backend/server_error.log
+backend/server_output.log
+backend/uvicorn_err.txt
+backend/uvicorn_out.txt
+test_doc.txt

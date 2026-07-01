@@ -1,118 +1,141 @@
+﻿"""Embedding providers with singleton client and LRU cache."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
+import hashlib
+from collections import OrderedDict
 from typing import Any
-
-from openai import AsyncOpenAI
-from sentence_transformers import SentenceTransformer
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.services.rag.llm_client import get_llm_client
 
 logger = get_logger(__name__)
 
 
-# --------------------------------------------------------------------------- #
-# Base Embedding Provider Contract
-# --------------------------------------------------------------------------- #
-class BaseEmbeddingProvider(ABC):
-    """Abstract interface defining the contract for document and query embedding generators."""
+class LRUCache:
+    """Simple thread-safe LRU cache for embedding results."""
 
+    def __init__(self, maxsize: int = 1000) -> None:
+        self.maxsize = maxsize
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+
+    def _make_key(self, text: str) -> str:
+        return hashlib.md5(text.encode("utf-8")).hexdigest()
+
+    def get(self, text: str) -> list[float] | None:
+        key = self._make_key(text)
+        if key not in self._cache:
+            return None
+        self._cache.move_to_end(key)
+        return self._cache[key]
+
+    def put(self, text: str, embedding: list[float]) -> None:
+        key = self._make_key(text)
+        self._cache[key] = embedding
+        self._cache.move_to_end(key)
+        if len(self._cache) > self.maxsize:
+            self._cache.popitem(last=False)
+
+    def clear(self) -> None:
+        self._cache.clear()
+
+
+class BaseEmbeddingProvider(ABC):
     @abstractmethod
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Generate high-dimensional vectors for a list of document strings."""
         pass
 
     @abstractmethod
     async def embed_query(self, text: str) -> list[float]:
-        """Generate a high-dimensional vector representing a search query."""
         pass
 
 
-# --------------------------------------------------------------------------- #
-# OpenAI Embedding Provider
-# --------------------------------------------------------------------------- #
 class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
-    """Generates embeddings using OpenAI API (e.g. text-embedding-3-small)."""
-
     def __init__(self, model: str | None = None, api_key: str | None = None) -> None:
         self.model = model or settings.EMBEDDING_MODEL
-        self.client = AsyncOpenAI(api_key=api_key or settings.OPENAI_API_KEY)
+        self.client = get_llm_client()
         self.batch_size = 2048
+        self._cache = LRUCache(maxsize=500)
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
-        # Split into batches to prevent payload size errors
-        batches = [texts[i : i + self.batch_size] for i in range(0, len(texts), self.batch_size)]
-        embeddings: list[list[float]] = []
+        uncached: list[tuple[int, str]] = []
+        results: list[list[float] | None] = [None] * len(texts)
+
+        for i, t in enumerate(texts):
+            cached = self._cache.get(t)
+            if cached is not None:
+                results[i] = cached
+            else:
+                uncached.append((i, t))
+
+        if not uncached:
+            return [r for r in results if r is not None]
+
+        uncached_texts = [t for _, t in uncached]
+        batches = [uncached_texts[i:i + self.batch_size] for i in range(0, len(uncached_texts), self.batch_size)]
+        embeddings = []
 
         async def _embed_batch(batch_texts: list[str], retries: int = 3) -> list[list[float]]:
             backoff = 1.0
             for attempt in range(retries):
                 try:
-                    response = await self.client.embeddings.create(
-                        input=batch_texts,
-                        model=self.model,
-                    )
+                    response = await self.client.embeddings.create(input=batch_texts, model=self.model)
                     return [item.embedding for item in response.data]
                 except Exception as exc:
                     if attempt == retries - 1:
                         logger.exception("Failed to generate OpenAI embeddings after retries")
                         raise exc
-                    logger.warning(
-                        "OpenAI embedding request failed. Retrying...",
-                        attempt=attempt + 1,
-                        backoff=backoff,
-                        error=str(exc),
-                    )
+                    logger.warning("OpenAI embedding request failed. Retrying...", attempt=attempt + 1, backoff=backoff, error=str(exc))
                     await asyncio.sleep(backoff)
                     backoff *= 2.0
             return []
 
-        # Execute batches concurrently
         tasks = [_embed_batch(batch) for batch in batches]
-        results = await asyncio.gather(*tasks)
+        batch_results = await asyncio.gather(*tasks)
 
-        for batch_res in results:
+        for batch_res in batch_results:
             embeddings.extend(batch_res)
 
-        return embeddings
+        for (idx, text), emb in zip(uncached, embeddings):
+            results[idx] = emb
+            self._cache.put(text, emb)
+
+        return [r for r in results if r is not None]
 
     async def embed_query(self, text: str) -> list[float]:
-        response = await self.client.embeddings.create(
-            input=[text],
-            model=self.model,
-        )
-        return response.data[0].embedding
+        cached = self._cache.get(text)
+        if cached is not None:
+            return cached
+        response = await self.client.embeddings.create(input=[text], model=self.model)
+        embedding = response.data[0].embedding
+        self._cache.put(text, embedding)
+        return embedding
+
+    def clear_cache(self) -> None:
+        self._cache.clear()
 
 
-# --------------------------------------------------------------------------- #
-# Local SentenceTransformers / BGE Provider
-# --------------------------------------------------------------------------- #
 class LocalEmbeddingProvider(BaseEmbeddingProvider):
-    """Generates embeddings locally using SentenceTransformers (BGE/Instructor) models."""
-
     def __init__(self, model_name: str | None = None) -> None:
         self.model_name = model_name or settings.EMBEDDING_MODEL
         logger.info("Initializing local SentenceTransformer model", model=self.model_name)
-        # Load model lazily
-        self._model: SentenceTransformer | None = None
+        self._model: Any = None
 
     @property
-    def model(self) -> SentenceTransformer:
+    def model(self) -> Any:
         if self._model is None:
+            from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self.model_name)
         return self._model
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        
-        # SentenceTransformers encode is CPU/GPU heavy and synchronous.
-        # Offload to a worker thread to keep the main asyncio event loop responsive.
         embeddings = await asyncio.to_thread(self._encode_sync, texts)
         return [list(map(float, vec)) for vec in embeddings]
 
@@ -124,11 +147,7 @@ class LocalEmbeddingProvider(BaseEmbeddingProvider):
         return self.model.encode(texts, show_progress_bar=False)
 
 
-# --------------------------------------------------------------------------- #
-# Factory Method
-# --------------------------------------------------------------------------- #
 def get_embedding_provider() -> BaseEmbeddingProvider:
-    """Instantiate the active EmbeddingProvider based on configuration settings."""
     provider_type = settings.EMBEDDING_PROVIDER.lower().strip()
     if provider_type == "openai":
         return OpenAIEmbeddingProvider()

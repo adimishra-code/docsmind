@@ -18,7 +18,6 @@ export function PromptInput() {
     const userMessage = prompt;
     setPrompt('');
 
-    // Add user message to store immediately
     addMessage({
       id: `msg-user-${Date.now()}`,
       role: 'user',
@@ -26,7 +25,6 @@ export function PromptInput() {
       created_at: new Date().toISOString(),
     });
 
-    // Initiate streaming request
     await streamChat(userMessage);
   };
 
@@ -38,38 +36,47 @@ export function PromptInput() {
   };
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="relative flex w-full items-end gap-2 bg-background border rounded-2xl p-2 shadow-sm focus-within:ring-1 focus-within:ring-primary transition-shadow">
-      <Button type="button" variant="ghost" size="icon" className="shrink-0 h-10 w-10 rounded-full text-muted-foreground hover:text-foreground">
-        <Paperclip className="h-5 w-5" />
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      className="relative flex w-full items-end gap-2 bg-card border rounded-xl p-2 shadow-sm focus-within:ring-1 focus-within:ring-ring transition-all duration-150"
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="shrink-0 h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
+      >
+        <Paperclip className="h-4 w-4" />
       </Button>
 
       <TextareaAutosize
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Ask a question or use / for commands..."
-        className="flex-1 max-h-60 min-h-[40px] resize-none bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
+        placeholder="Ask a question..."
+        className="flex-1 max-h-60 min-h-[36px] resize-none bg-transparent py-2.5 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
         maxRows={8}
         disabled={isStreaming}
       />
 
       {isStreaming ? (
-        <Button 
-          type="button" 
+        <Button
+          type="button"
           onClick={abortStream}
-          size="icon" 
-          className="shrink-0 h-10 w-10 rounded-full bg-destructive hover:bg-destructive/90 text-destructive-foreground animate-pulse"
+          size="icon"
+          className="shrink-0 h-9 w-9 rounded-lg bg-destructive hover:bg-destructive/90 text-destructive-foreground"
         >
-          <StopCircle className="h-5 w-5" />
+          <StopCircle className="h-4 w-4" />
         </Button>
       ) : (
-        <Button 
-          type="submit" 
-          size="icon" 
+        <Button
+          type="submit"
+          size="icon"
           disabled={!prompt.trim()}
-          className="shrink-0 h-10 w-10 rounded-full"
+          className="shrink-0 h-9 w-9 rounded-lg"
         >
-          <Send className="h-5 w-5" />
+          <Send className="h-4 w-4" />
         </Button>
       )}
     </form>

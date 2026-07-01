@@ -4,15 +4,15 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: docsmind_user
-      POSTGRES_PASSWORD: devpassword
-      POSTGRES_DB: docsmind_dev
+      POSTGRES_USER: docsmind
+      POSTGRES_PASSWORD: docsmind
+      POSTGRES_DB: docsmind
     ports:
       - "5432:5432"
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U docsmind_user -d docsmind_dev"]
+      test: ["CMD-SHELL", "pg_isready -U docsmind -d docsmind"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -41,6 +41,19 @@ services:
       timeout: 5s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -50,10 +63,11 @@ services:
     volumes:
       - ./backend:/app  # Hot reload mount
     environment:
-      - DATABASE_URL=postgresql+asyncpg://docsmind_user:devpassword@postgres:5432/docsmind_dev
+      - DATABASE_URL=postgresql+asyncpg://docsmind:docsmind@postgres:5432/docsmind
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LLM_BASE_URL=http://ollama:11434/v1
+      - LLM_MODEL=llama3.2:3b
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,6 +75,8 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+      ollama:
+        condition: service_started
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   worker:
@@ -70,7 +86,7 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      - DATABASE_URL=postgresql+asyncpg://docsmind_user:devpassword@postgres:5432/docsmind_dev
+      - DATABASE_URL=postgresql+asyncpg://docsmind:docsmind@postgres:5432/docsmind
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -93,3 +109,4 @@ volumes:
   postgres_dev_data:
   redis_dev_data:
   qdrant_dev_data:
+  ollama_data:

@@ -12,6 +12,8 @@ import app.db.session as db_session
 from app.api.deps import get_db, get_redis
 from app.db.base import Base
 from app.main import app
+from app.models.checkpoint import GraphCheckpoint  # noqa: F401 — register with Base.metadata
+from app.models.audit import AuditLog  # noqa: F401 — register with Base.metadata
 from app.workers.celery_app import celery
 
 # Configure Celery for synchronous task execution during testing
@@ -44,6 +46,40 @@ class MockRedis:
             del self.data[key]
             return 1
         return 0
+
+    async def incr(self, key: str) -> int:
+        self.data[key] = str(int(self.data.get(key, "0")) + 1)
+        return int(self.data[key])
+
+    async def expire(self, key: str, time: int) -> bool:
+        self.ttls[key] = time
+        return True
+
+    def pipeline(self):
+        return _MockPipeline(self)
+
+
+class _MockPipeline:
+    def __init__(self, redis: MockRedis) -> None:
+        self._redis = redis
+        self._commands: list[tuple] = []
+
+    def incr(self, key: str):
+        self._commands.append(("incr", key))
+        return self
+
+    def expire(self, key: str, time: int):
+        self._commands.append(("expire", key, time))
+        return self
+
+    async def execute(self) -> list:
+        results = []
+        for cmd in self._commands:
+            if cmd[0] == "incr":
+                results.append(await self._redis.incr(cmd[1]))
+            elif cmd[0] == "expire":
+                results.append(await self._redis.expire(cmd[1], cmd[2]))
+        return results
 
 
 # --------------------------------------------------------------------------- #

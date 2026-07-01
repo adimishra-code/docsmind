@@ -15,7 +15,10 @@ async def planner_node(state: AgentState) -> dict:
     # For now, we simulate the planner's output.
     last_message = messages[-1].content
     
-    llm = ChatOpenAI(model="gpt-4o-mini", api_key=settings.OPENAI_API_KEY)
+    kwargs = {"model": settings.LLM_MODEL, "api_key": settings.OPENAI_API_KEY}
+    if settings.LLM_BASE_URL:
+        kwargs["base_url"] = settings.LLM_BASE_URL
+    llm = ChatOpenAI(**kwargs)
     
     prompt = f"""
     You are the Planner Agent. Analyze this user request and output a brief execution plan.

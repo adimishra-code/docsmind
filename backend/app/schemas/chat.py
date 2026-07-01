@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Any
 import uuid
 from pydantic import BaseModel
+
+
+class MessageRole(str, Enum):
+    """Chat message role types."""
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
 
 
 class ChatSessionBase(BaseModel):
@@ -42,6 +50,14 @@ class ChatMessageResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ChatSessionListResponse(BaseModel):
+    items: list[ChatSessionResponse]
+    total: int
+    page: int = 1
+    page_size: int = 50
+    total_pages: int = 1
 
 
 class ChatSessionDetailResponse(ChatSessionResponse):

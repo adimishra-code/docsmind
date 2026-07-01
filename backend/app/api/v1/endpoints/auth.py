@@ -1,28 +1,112 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+import urllib.parse
+
+import httpx
+from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.responses import RedirectResponse
 
 from app.api.deps import AuthServiceDep, CurrentUserDep, UserServiceDep
-from app.schemas.user import Token, TokenRefreshRequest, UserCreate, UserResponse
+from app.api.middleware.throttle import RegisterThrottle
+from app.core.config import settings
+from app.schemas.user import (
+    LoginRequest,
+    MessageResponse,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
+    ProfileUpdateRequest,
+    ResendVerificationRequest,
+    Token,
+    TokenRefreshRequest,
+    UserCreate,
+    UserResponse,
+)
+from app.services.email import send_verification_email, send_welcome_email, send_password_reset_email
 
 router = APIRouter()
 
 
+# ---------------------------------------------------------------------------
+# Registration
+# ---------------------------------------------------------------------------
+
 @router.post(
     "/register",
-    response_model=UserResponse,
+    response_model=MessageResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user",
 )
 async def register(
+    _: RegisterThrottle,
     user_in: UserCreate,
     user_service: UserServiceDep,
-) -> UserResponse:
-    """Create a new user account with unique email address."""
+) -> MessageResponse:
+    """Create a new user account. Sends an email verification link."""
     user = await user_service.create_user(user_in)
-    # Return User model which maps cleanly to UserResponse schema
-    return user
+    session = user_service.user_repo.session
+    await session.flush()
 
+    # Send verification email (non-blocking — failure won't abort registration)
+    if user.email_verification_token:
+        await send_verification_email(user.email, user.email_verification_token)
+
+    await session.commit()
+    return MessageResponse(
+        message="Registration successful! Please check your email to verify your account."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Email Verification
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/verify-email",
+    summary="Verify email via token link",
+)
+async def verify_email(
+    token: str,
+    user_service: UserServiceDep,
+) -> RedirectResponse:
+    """Verify user's email. Called when user clicks the link in the email."""
+    try:
+        user = await user_service.verify_email_token(token)
+        session = user_service.user_repo.session
+        await session.commit()
+        # Send welcome email
+        await send_welcome_email(user.email, user.full_name)
+        redirect_url = f"{settings.FRONTEND_URL}/login?verified=true"
+    except Exception:
+        redirect_url = f"{settings.FRONTEND_URL}/login?error=invalid_token"
+
+    return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+
+
+@router.post(
+    "/resend-verification",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Resend email verification link",
+)
+async def resend_verification(
+    body: ResendVerificationRequest,
+    user_service: UserServiceDep,
+) -> MessageResponse:
+    """Resend email verification to the given email address."""
+    user = await user_service.resend_verification_email(body.email)
+    session = user_service.user_repo.session
+    await session.flush()
+
+    if user.email_verification_token:
+        await send_verification_email(user.email, user.email_verification_token)
+
+    await session.commit()
+    return MessageResponse(message="Verification email resent. Please check your inbox.")
+
+
+# ---------------------------------------------------------------------------
+# Login
+# ---------------------------------------------------------------------------
 
 @router.post(
     "/login",
@@ -31,23 +115,24 @@ async def register(
     summary="User authentication login",
 )
 async def login(
-    credentials: UserCreate,  # custom JSON login schema (reusing UserCreate email/password)
+    credentials: LoginRequest,
     auth_service: AuthServiceDep,
 ) -> Token:
-    """Authenticate email and password and issue Access and Refresh tokens."""
+    """Authenticate email+password and issue Access + Refresh tokens.
+    Requires email to be verified first.
+    """
     user = await auth_service.authenticate(
         email=credentials.email, password=credentials.password
     )
-    # We must commit or let FastAPI session commit the transactional updates
-    # The get_db generator rolls back on exception, commits on success or we can flush/commit.
-    # In FastAPI, we can commit at the service level, or let the router commit.
-    # Let's commit at the endpoint level or let session handle it.
-    # In auth service, we performed flushes; we will commit at the end of the request.
     session = auth_service.user_repo.session
     token = await auth_service.create_session(user.id)
     await session.commit()
     return token
 
+
+# ---------------------------------------------------------------------------
+# Token Rotation & Logout
+# ---------------------------------------------------------------------------
 
 @router.post(
     "/refresh",
@@ -74,11 +159,12 @@ async def refresh_tokens(
 async def logout(
     body: TokenRefreshRequest,
     auth_service: AuthServiceDep,
-) -> None:
+) -> Response:
     """Revoke a refresh token, adding it to the denylist to prevent reuse."""
     session = auth_service.user_repo.session
     await auth_service.invalidate_session(body.refresh_token)
     await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
@@ -90,3 +176,194 @@ async def logout(
 async def get_me(current_user: CurrentUserDep) -> UserResponse:
     """Retrieve details for the currently logged-in user."""
     return current_user
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update current user profile",
+)
+async def update_me(
+    body: ProfileUpdateRequest,
+    current_user: CurrentUserDep,
+    user_service: UserServiceDep,
+) -> UserResponse:
+    """Update the current user's profile (display name)."""
+    user = await user_service.update_profile(current_user.id, body.full_name)
+    await user_service.user_repo.session.commit()
+    return user
+
+
+# ---------------------------------------------------------------------------
+# Password Reset
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Request a password reset email",
+)
+async def forgot_password(
+    body: PasswordResetRequest,
+    user_service: UserServiceDep,
+) -> MessageResponse:
+    """Send a password reset link to the given email if an account exists.
+    Always returns the same message to prevent user enumeration.
+    """
+    user = await user_service.request_password_reset(body.email)
+    session = user_service.user_repo.session
+    await session.flush()
+
+    if user and user.password_reset_token:
+        await send_password_reset_email(user.email, user.password_reset_token)
+
+    await session.commit()
+    return MessageResponse(
+        message="If an account with that email exists, you'll receive a password reset link shortly."
+    )
+
+
+@router.get(
+    "/reset-password/verify",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify a password reset token",
+)
+async def verify_reset_token(
+    token: str,
+    user_service: UserServiceDep,
+) -> MessageResponse:
+    """Validate that a password reset token is still valid (not expired or already used)."""
+    await user_service.verify_reset_token(token)
+    return MessageResponse(message="Token is valid.")
+
+
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reset password using a valid token",
+)
+async def reset_password(
+    body: PasswordResetConfirmRequest,
+    user_service: UserServiceDep,
+) -> MessageResponse:
+    """Consume the reset token and set the new password."""
+    await user_service.reset_password(body.token, body.new_password)
+    session = user_service.user_repo.session
+    await session.commit()
+    return MessageResponse(message="Your password has been reset successfully. You can now log in.")
+
+
+# ---------------------------------------------------------------------------
+# Google OAuth
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/google",
+    summary="Initiate Google OAuth2 login",
+)
+async def google_login() -> RedirectResponse:
+    """Redirect user to Google's OAuth2 consent screen."""
+    if not settings.google_oauth_enabled:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google OAuth is not configured on this server.",
+        )
+
+    params = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "select_account",
+    }
+    google_auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+    return RedirectResponse(url=google_auth_url)
+
+
+@router.get(
+    "/google/callback",
+    summary="Google OAuth2 callback handler",
+)
+async def google_callback(
+    code: str,
+    user_service: UserServiceDep,
+    auth_service: AuthServiceDep,
+    error: str | None = None,
+) -> RedirectResponse:
+    """Exchange Google OAuth code for user profile, then issue JWT tokens."""
+    if error:
+        redirect_url = f"{settings.FRONTEND_URL}/login?error=google_oauth_cancelled"
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+
+    if not settings.google_oauth_enabled:
+        redirect_url = f"{settings.FRONTEND_URL}/login?error=oauth_not_configured"
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # Exchange code for token
+            token_response = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": settings.GOOGLE_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                    "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+                timeout=10,
+            )
+            token_response.raise_for_status()
+            token_data = token_response.json()
+
+            # Fetch Google user profile
+            userinfo_response = await client.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {token_data['access_token']}"},
+                timeout=10,
+            )
+            userinfo_response.raise_for_status()
+            profile = userinfo_response.json()
+
+        google_id = profile.get("id")
+        email = profile.get("email")
+        full_name = profile.get("name")
+        avatar_url = profile.get("picture")
+
+        if not google_id or not email:
+            raise ValueError("Incomplete Google profile received")
+
+        # Get or create user
+        user, _is_new = await user_service.get_or_create_google_user(
+            google_id=google_id,
+            email=email,
+            full_name=full_name,
+            avatar_url=avatar_url,
+        )
+
+        session = user_service.user_repo.session
+        await session.flush()
+
+        # Issue tokens
+        token = await auth_service.create_session(user.id)
+        await session.commit()
+
+        # Redirect to frontend with tokens encoded in URL fragment (SPA approach)
+        params = urllib.parse.urlencode({
+            "access_token": token.access_token,
+            "refresh_token": token.refresh_token,
+        })
+        redirect_url = f"{settings.FRONTEND_URL}/oauth/callback?{params}"
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).error("Google OAuth error: %s", exc)
+        redirect_url = f"{settings.FRONTEND_URL}/login?error=google_oauth_failed"
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)

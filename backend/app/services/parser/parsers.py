@@ -296,6 +296,100 @@ class TxtParser(DocumentParserInterface):
 
 
 # --------------------------------------------------------------------------- #
+# XLSX Parser (Microsoft Excel)
+# --------------------------------------------------------------------------- #
+class XlsxParser(DocumentParserInterface):
+    """Parses Excel files (*.xlsx) sheet-by-sheet using openpyxl."""
+
+    def parse(self, file_content: bytes) -> tuple[str, dict[str, Any]]:
+        logger.info("Parsing XLSX document")
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(file_content), data_only=True)
+        sheets_text = []
+        sheets_count = 0
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            rows = []
+            for row in ws.iter_rows(values_only=True):
+                cells = [str(c) if c is not None else "" for c in row]
+                rows.append(" | ".join(cells))
+            if rows:
+                sheets_text.append(f"### Sheet: {sheet_name}\n" + "\n".join(rows))
+            sheets_count += 1
+        wb.close()
+        final_text = "\n\n".join(sheets_text)
+        metadata = {"sheets_count": sheets_count, "sheet_names": wb.sheetnames}
+        return final_text, metadata
+
+
+# --------------------------------------------------------------------------- #
+# HTML Parser
+# --------------------------------------------------------------------------- #
+class HtmlParser(DocumentParserInterface):
+    """Parses HTML files by stripping tags and extracting visible text."""
+
+    def parse(self, file_content: bytes) -> tuple[str, dict[str, Any]]:
+        logger.info("Parsing HTML document")
+        from html.parser import HTMLParser
+
+        class TextExtractor(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__()
+                self.parts: list[str] = []
+                self.skip = False
+
+            def handle_starttag(self, tag: str, _attrs: list[tuple[str, str | None]]) -> None:
+                if tag in ("script", "style"):
+                    self.skip = True
+
+            def handle_endtag(self, tag: str) -> None:
+                if tag in ("script", "style"):
+                    self.skip = False
+                if tag in ("p", "br", "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr"):
+                    self.parts.append("\n")
+
+            def handle_data(self, data: str) -> None:
+                if not self.skip:
+                    stripped = data.strip()
+                    if stripped:
+                        self.parts.append(stripped + " ")
+
+        try:
+            raw = file_content.decode("utf-8")
+        except UnicodeDecodeError:
+            raw = file_content.decode("latin-1")
+
+        extractor = TextExtractor()
+        extractor.feed(raw)
+        text = "".join(extractor.parts).strip()
+        metadata = {"char_count": len(text)}
+        return text, metadata
+
+
+# --------------------------------------------------------------------------- #
+# RTF Parser (Rich Text Format)
+# --------------------------------------------------------------------------- #
+class RtfParser(DocumentParserInterface):
+    """Extracts plain text from RTF files by stripping control sequences."""
+
+    def parse(self, file_content: bytes) -> tuple[str, dict[str, Any]]:
+        logger.info("Parsing RTF document")
+        try:
+            raw = file_content.decode("utf-8", errors="replace")
+        except UnicodeDecodeError:
+            raw = file_content.decode("latin-1", errors="replace")
+
+        text = raw
+        text = re.sub(r"\\([a-z]+)(-?\d+)?", "", text)
+        text = re.sub(r"\{|\}", "", text)
+        text = re.sub(r"\r\n|\r|\n", "\n", text)
+        text = re.sub(r" +", " ", text)
+        text = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+        metadata = {"char_count": len(text)}
+        return text, metadata
+
+
+# --------------------------------------------------------------------------- #
 # Parser Router & Language Detection
 # --------------------------------------------------------------------------- #
 def get_parser_for_file_type(file_type: str) -> DocumentParserInterface:
@@ -311,6 +405,12 @@ def get_parser_for_file_type(file_type: str) -> DocumentParserInterface:
         return CsvParser()
     elif ftype in ("txt", "md", "markdown"):
         return TxtParser()
+    elif ftype in ("xlsx", "xls"):
+        return XlsxParser()
+    elif ftype in ("html", "htm"):
+        return HtmlParser()
+    elif ftype == "rtf":
+        return RtfParser()
     else:
         raise ValidationError(f"No parser implemented for file type: {file_type}", code="unsupported_format")
 
