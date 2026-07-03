@@ -43,4 +43,8 @@ RUN adduser --disabled-password --gecos '' docsmind && \
     chown -R docsmind:docsmind /app
 USER docsmind
 
-CMD ["celery", "-A", "app.worker", "worker", "--loglevel=info"]
+# Liveness: ask Celery to ping its own workers over the broker.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD ["celery", "-A", "app.workers.celery_app", "inspect", "ping", "-d", "celery@$HOSTNAME"]
+
+CMD ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info"]

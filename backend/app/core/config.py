@@ -12,6 +12,12 @@ Environment = Literal["development", "staging", "production"]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
+# Known-insecure development defaults. If any of these survive into a
+# production process it is a misconfiguration that must fail fast at
+# startup rather than surface as a runtime 401/insecure credential.
+INSECURE_OPENAI_KEY = "mock-key-for-development"
+INSECURE_POSTGRES_PASSWORD = "docsmind"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -138,6 +144,32 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return "redis://{0}:{1}/{2}".format(self.REDIS_HOST, self.REDIS_PORT, self.REDIS_DB)
+
+    def production_safety_errors(self) -> list[str]:
+        """Return misconfigurations that must block startup in production.
+
+        Non-production environments are allowed to run with the convenient
+        development defaults; production must supply real secrets. This turns
+        a silent, deferred failure (e.g. every chat call 401ing because the
+        OpenAI key is still the mock placeholder) into an immediate, loud
+        boot failure.
+        """
+        if not self.is_production:
+            return []
+
+        errors: list[str] = []
+        if self.EMBEDDING_PROVIDER == "openai" and (
+            not self.OPENAI_API_KEY or self.OPENAI_API_KEY == INSECURE_OPENAI_KEY
+        ):
+            errors.append(
+                "OPENAI_API_KEY is unset or still the development placeholder while "
+                "EMBEDDING_PROVIDER=openai; chat and embeddings will fail at runtime."
+            )
+        if self.POSTGRES_PASSWORD == INSECURE_POSTGRES_PASSWORD:
+            errors.append(
+                "POSTGRES_PASSWORD is still the insecure default 'docsmind'; set a real password."
+            )
+        return errors
 
 
 @lru_cache

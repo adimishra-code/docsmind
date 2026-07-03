@@ -43,10 +43,10 @@ function NavItemLink({ icon: Icon, label, href, collapsed }: { icon: any; label:
       to={href}
       className={({ isActive }) =>
         cn(
-          'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150',
+          'group/nav relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150',
           isActive
-            ? 'bg-primary/10 text-primary'
-            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+            ? 'bg-accent text-foreground font-medium before:absolute before:left-0 before:top-1/2 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-foreground'
+            : 'text-muted-foreground font-medium hover:bg-accent/60 hover:text-foreground',
           collapsed && 'justify-center px-2'
         )
       }
@@ -80,14 +80,19 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-full bg-card border-r">
+      <div className="flex flex-col h-full bg-secondary/40 border-r">
         {/* Logo */}
         <div className={cn(
-          'flex h-14 items-center border-b px-4 shrink-0',
+          'flex h-14 items-center px-4 shrink-0',
           collapsed ? 'justify-center' : 'justify-between'
         )}>
           {!collapsed && (
-            <span className="text-base font-semibold tracking-tight">DocsMind</span>
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-foreground text-background text-[13px] font-semibold">
+                D
+              </div>
+              <span className="text-[15px] font-semibold tracking-tight">DocsMind</span>
+            </div>
           )}
           <Button
             variant="ghost"
@@ -147,7 +152,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
             <div className="flex items-center gap-3 rounded-md px-3 py-2">
               <Avatar className="h-8 w-8">
                 <AvatarImage src="" alt={user?.full_name ?? ''} />
-                <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+                <AvatarFallback className="bg-foreground text-background text-xs font-medium">
                   {initials}
                 </AvatarFallback>
               </Avatar>

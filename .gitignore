@@ -1,12 +1,6 @@
-# AI Context Files
-AGENTS.md
-AI_MEMORY.md
-ARCHITECTURE_RULES.md
-BENCHMARKS.md
-CLAUDE.md
-DECISIONS.md
-NEXT_STEPS.md
-PROJECT_CONTEXT.md
+# Markdown files
+*.md
+!README.md
 
 # Virtual Environments
 venv/

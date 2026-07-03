@@ -8,9 +8,13 @@ async def critic_node(state: AgentState) -> dict:
     draft = state.get("final_response", "")
     citations = state.get("citations", [])
     confidence = state.get("confidence", 0.0)
+    next_revision = state.get("revision_count", 0) + 1
 
     if not draft:
-        return {"verification_feedback": "No draft was generated. Please retrieve relevant context and try again."}
+        return {
+            "verification_feedback": "No draft was generated. Please retrieve relevant context and try again.",
+            "revision_count": next_revision,
+        }
 
     kwargs = {"model": settings.LLM_MODEL, "api_key": settings.OPENAI_API_KEY, "temperature": 0.3}
     if settings.LLM_BASE_URL:
@@ -31,4 +35,4 @@ async def critic_node(state: AgentState) -> dict:
     )
 
     response = await llm.ainvoke(prompt)
-    return {"verification_feedback": response.content}
+    return {"verification_feedback": response.content, "revision_count": next_revision}

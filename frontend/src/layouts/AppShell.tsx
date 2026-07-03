@@ -14,7 +14,7 @@ export function AppShell() {
     <div className="flex h-screen w-full overflow-hidden bg-background">
       <div
         className={cn(
-          'shrink-0 border-r transition-all duration-200 ease-in-out',
+          'shrink-0 transition-all duration-200 ease-in-out',
           isSidebarCollapsed ? 'w-[64px]' : 'w-[240px]'
         )}
       >

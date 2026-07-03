@@ -61,6 +61,8 @@ class UserService:
             expiry = user.email_verification_sent_at + timedelta(
                 hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
             )
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=UTC)
             if datetime.now(UTC) > expiry:
                 raise ValidationError("Verification link has expired. Please request a new one.")
 
@@ -80,7 +82,10 @@ class UserService:
 
         # Rate-limit: don't resend if sent within the last 60 seconds
         if user.email_verification_sent_at:
-            since = datetime.now(UTC) - user.email_verification_sent_at
+            sent_at = user.email_verification_sent_at
+            if sent_at.tzinfo is None:
+                sent_at = sent_at.replace(tzinfo=UTC)
+            since = datetime.now(UTC) - sent_at
             if since.total_seconds() < 60:
                 raise ValidationError("Please wait before requesting another verification email.")
 
@@ -153,7 +158,10 @@ class UserService:
 
         # Rate-limit: don't resend within 60 seconds
         if user.password_reset_sent_at:
-            since = datetime.now(UTC) - user.password_reset_sent_at
+            sent_at = user.password_reset_sent_at
+            if sent_at.tzinfo is None:
+                sent_at = sent_at.replace(tzinfo=UTC)
+            since = datetime.now(UTC) - sent_at
             if since.total_seconds() < 60:
                 raise ValidationError("Please wait before requesting another reset email.")
 
@@ -172,6 +180,8 @@ class UserService:
         # Tokens expire after 1 hour
         if user.password_reset_sent_at:
             expiry = user.password_reset_sent_at + timedelta(hours=1)
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=UTC)
             if datetime.now(UTC) > expiry:
                 raise ValidationError("This reset link has expired. Please request a new one.", code="token_expired")
 

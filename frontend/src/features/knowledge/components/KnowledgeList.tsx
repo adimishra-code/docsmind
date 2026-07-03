@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { documentsApi, DocumentMetadata } from '@/services/documentsApi';
-import { useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { documentsApi, DocumentMetadata, isDocumentReady, isDocumentProcessing, isDocumentFailed, documentStatusLabel, documentStatusVariant } from '@/services/documentsApi';
+import { useWorkspaceStore, sortDocuments } from '@/store/useWorkspaceStore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -11,22 +11,32 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { RenameDialog, DeleteDocumentDialog } from '@/components/documents/DocumentActionModal';
 import { format } from 'date-fns';
-import { MoreHorizontal, Eye, Download, Pencil, Trash2, FileText } from 'lucide-react';
+import { MoreHorizontal, Eye, Download, Pencil, Trash2, FileText, MessageSquarePlus, RefreshCw } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
+import { useAddToContext } from '../hooks/useAddToContext';
+import { useReprocessDocument } from '../hooks/useReprocessDocument';
 
 export function KnowledgeList() {
   const searchQuery = useWorkspaceStore((state) => state.searchQuery);
   const toggleSelection = useWorkspaceStore((state) => state.toggleDocumentSelection);
   const selectedIds = useWorkspaceStore((state) => state.selectedDocumentIds);
+  const sortKey = useWorkspaceStore((state) => state.sortKey);
+  const sortDir = useWorkspaceStore((state) => state.sortDir);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [renameTarget, setRenameTarget] = useState<DocumentMetadata | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentMetadata | null>(null);
+  const { addToContext, isPinned } = useAddToContext();
+  const reprocess = useReprocessDocument();
 
   const { data: response, isLoading } = useQuery({
     queryKey: ['documents', searchQuery],
     queryFn: () => documentsApi.getAll({ q: searchQuery }),
+    // Live-refresh while any document is still being ingested so its status
+    // transitions to Ready/Failed without a manual reload.
+    refetchInterval: (query) =>
+      (query.state.data?.items ?? []).some((d) => isDocumentProcessing(d.status)) ? 4000 : false,
   });
 
   const renameMutation = useMutation({
@@ -45,7 +55,10 @@ export function KnowledgeList() {
     },
   });
 
-  const documents = response?.items ?? [];
+  const documents = useMemo(
+    () => sortDocuments(response?.items ?? [], sortKey, sortDir),
+    [response?.items, sortKey, sortDir],
+  );
 
   if (isLoading) {
     return (
@@ -98,8 +111,8 @@ export function KnowledgeList() {
                   {doc.filename}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={doc.status === 'ready' ? 'default' : doc.status === 'failed' ? 'destructive' : 'secondary'}>
-                    {doc.status.toUpperCase()}
+                  <Badge variant={documentStatusVariant(doc.status)}>
+                    {documentStatusLabel(doc.status).toUpperCase()}
                   </Badge>
                 </TableCell>
                 <TableCell className="uppercase text-xs font-mono">{doc.file_type}</TableCell>
@@ -118,9 +131,24 @@ export function KnowledgeList() {
                       <DropdownMenuItem onClick={() => navigate(`/documents/${doc.id}`)}>
                         <Eye className="mr-2 h-4 w-4" /> Open
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={!isDocumentReady(doc.status) || isPinned(doc.id)}
+                        onClick={() => addToContext(doc)}
+                      >
+                        <MessageSquarePlus className="mr-2 h-4 w-4" />
+                        {isPinned(doc.id) ? 'In chat context' : 'Add to chat context'}
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => documentsApi.download(doc.id, doc.filename)}>
                         <Download className="mr-2 h-4 w-4" /> Download
                       </DropdownMenuItem>
+                      {isDocumentFailed(doc.status) && (
+                        <DropdownMenuItem
+                          disabled={reprocess.isPending}
+                          onClick={() => reprocess.mutate(doc.id)}
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" /> Retry processing
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => setRenameTarget(doc)}>
                         <Pencil className="mr-2 h-4 w-4" /> Rename...

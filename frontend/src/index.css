@@ -2,105 +2,103 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * DocsMind design tokens.
+ * Philosophy: warm, restrained, monochrome. Ink on ivory. Color is reserved
+ * for status only. No saturated brand blue, no gradients. The interface is
+ * carried by typography, spacing and a single graphite accent.
+ */
 @layer base {
   :root {
-    /* Background: Clean White */
-    --background: 0 0% 99%;
-    /* Foreground: Near Black */
-    --foreground: 224 71% 4%;
+    /* Surfaces — warm white / ivory */
+    --background: 40 30% 99%;
+    --foreground: 24 10% 10%;
 
-    /* Surface: White */
     --card: 0 0% 100%;
-    --card-foreground: 224 71% 4%;
+    --card-foreground: 24 10% 10%;
 
-    /* Popover: White */
     --popover: 0 0% 100%;
-    --popover-foreground: 224 71% 4%;
+    --popover-foreground: 24 10% 10%;
 
-    /* Primary: Indigo */
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
+    /* Primary — warm graphite (near-black ink), not blue */
+    --primary: 24 10% 14%;
+    --primary-foreground: 40 30% 98%;
 
-    /* Secondary: Light Gray */
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 224 71% 4%;
+    /* Secondary / muted / accent — warm stone neutrals */
+    --secondary: 40 12% 95%;
+    --secondary-foreground: 24 10% 18%;
 
-    /* Muted */
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 40 12% 95.5%;
+    --muted-foreground: 30 5% 42%;
 
-    /* Accent */
-    --accent: 220 14% 96%;
-    --accent-foreground: 224 71% 4%;
+    --accent: 40 14% 93.5%;
+    --accent-foreground: 24 10% 14%;
 
-    --destructive: 0 84% 60%;
+    /* Status — desaturated, calm */
+    --destructive: 4 62% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --info: 214 95% 58%;
+    --info: 214 55% 44%;
     --info-foreground: 0 0% 100%;
 
-    --success: 142 71% 45%;
+    --success: 152 38% 37%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
+    --warning: 32 78% 45%;
     --warning-foreground: 0 0% 100%;
 
-    /* Borders */
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 239 84% 67%;
+    /* Lines & focus — warm hairlines, neutral graphite ring */
+    --border: 40 10% 90%;
+    --input: 40 10% 88%;
+    --ring: 24 10% 30%;
 
-    /* 8px spacing system */
-    --spacing-unit: 8px;
     --radius: 0.5rem;
 
-    /* Sidebar */
+    /* Layout */
     --sidebar-width: 240px;
     --sidebar-collapsed-width: 64px;
     --topnav-height: 56px;
   }
 
   .dark {
-    /* Background: Near Black */
-    --background: 224 71% 4%;
-    /* Foreground: Light Gray */
-    --foreground: 210 20% 98%;
+    /* Surfaces — warm charcoal, not indigo-black */
+    --background: 24 8% 8%;
+    --foreground: 40 20% 92%;
 
-    /* Surface: Dark Gray */
-    --card: 224 71% 6%;
-    --card-foreground: 210 20% 98%;
+    --card: 24 8% 10.5%;
+    --card-foreground: 40 20% 92%;
 
-    --popover: 224 71% 6%;
-    --popover-foreground: 210 20% 98%;
+    --popover: 24 8% 10.5%;
+    --popover-foreground: 40 20% 92%;
 
-    /* Primary: Lighter Indigo */
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
+    /* Primary inverts to light-on-dark (Linear/Vercel style) */
+    --primary: 40 20% 92%;
+    --primary-foreground: 24 10% 12%;
 
-    --secondary: 215 28% 17%;
-    --secondary-foreground: 210 20% 98%;
+    --secondary: 24 6% 16%;
+    --secondary-foreground: 40 20% 92%;
 
-    --muted: 215 28% 17%;
-    --muted-foreground: 218 11% 65%;
+    --muted: 24 6% 15.5%;
+    --muted-foreground: 40 8% 62%;
 
-    --accent: 215 28% 17%;
-    --accent-foreground: 210 20% 98%;
+    --accent: 24 6% 18.5%;
+    --accent-foreground: 40 20% 92%;
 
-    --destructive: 0 63% 45%;
+    --destructive: 4 58% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --info: 214 100% 60%;
-    --info-foreground: 0 0% 100%;
+    --info: 214 60% 60%;
+    --info-foreground: 24 10% 12%;
 
-    --success: 142 60% 45%;
-    --success-foreground: 0 0% 100%;
+    --success: 152 40% 46%;
+    --success-foreground: 24 10% 12%;
 
-    --warning: 38 100% 50%;
-    --warning-foreground: 0 0% 100%;
+    --warning: 32 75% 55%;
+    --warning-foreground: 24 10% 12%;
 
-    --border: 215 28% 17%;
-    --input: 215 28% 17%;
-    --ring: 239 84% 67%;
+    --border: 24 6% 18%;
+    --input: 24 6% 20%;
+    --ring: 40 15% 70%;
   }
 }
 
@@ -108,16 +106,47 @@
   * {
     @apply border-border;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    /* Inter contextual features for a crafted, editorial feel */
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+  /* Headings carry the interface: tight tracking, strong hierarchy */
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  }
+  /* Restrained, keyboard-visible focus */
   *:focus-visible {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    @apply outline-none ring-2 ring-ring/70 ring-offset-2 ring-offset-background;
+  }
+  /* Calmer, thinner scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 9999px;
+    border: 3px solid hsl(var(--background));
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.4);
   }
 }
 
 @layer utilities {
-  /* Subtle fade-in animation */
+  /* Subtle, non-decorative motion only */
   .animate-fade-in {
     animation: fade-in 200ms ease-out;
   }
@@ -125,12 +154,14 @@
     from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  /* Slide up animation */
   .animate-slide-up {
-    animation: slide-up 250ms ease-out;
+    animation: slide-up 240ms cubic-bezier(0.16, 1, 0.3, 1);
   }
   @keyframes slide-up {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+  .text-balance {
+    text-wrap: balance;
   }
 }

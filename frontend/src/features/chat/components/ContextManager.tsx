@@ -3,7 +3,6 @@ import { useContextStore } from '@/store/useContextStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { X, FileText } from 'lucide-react';
-import { formatBytes } from '@/utils';
 
 export function ContextManager() {
   const { pinnedDocuments, unpinDocument, clearContext } = useContextStore();
@@ -56,8 +55,8 @@ export function ContextManager() {
       {pinnedDocuments.length > 0 && (
         <div className="p-4 border-t">
           <div className="flex justify-between text-[10px] text-muted-foreground mb-1.5">
-            <span>Context tokens</span>
-            <span>{Math.round(estimatedTokens).toLocaleString()}</span>
+            <span title="Rough estimate (~0.25 tokens per byte), not an exact count">Estimated tokens</span>
+            <span>~{Math.round(estimatedTokens).toLocaleString()}</span>
           </div>
           <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
             <div

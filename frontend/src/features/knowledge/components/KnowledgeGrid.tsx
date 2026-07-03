@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { documentsApi, DocumentMetadata } from '@/services/documentsApi';
+import { documentsApi, DocumentMetadata, isDocumentReady, isDocumentProcessing, isDocumentFailed } from '@/services/documentsApi';
 import { MetadataCard } from '@/components/documents/MetadataCard';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useWorkspaceStore } from '@/store/useWorkspaceStore';
+import { useWorkspaceStore, sortDocuments } from '@/store/useWorkspaceStore';
 import { RenameDialog, DeleteDocumentDialog } from '@/components/documents/DocumentActionModal';
 import {
   ContextMenu,
@@ -13,22 +13,31 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { Eye, Download, Pencil, Trash2, FileText } from 'lucide-react';
+import { Eye, Download, Pencil, Trash2, FileText, MessageSquarePlus, RefreshCw } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
+import { useAddToContext } from '../hooks/useAddToContext';
+import { useReprocessDocument } from '../hooks/useReprocessDocument';
 
 export function KnowledgeGrid() {
   const searchQuery = useWorkspaceStore((state) => state.searchQuery);
   const toggleSelection = useWorkspaceStore((state) => state.toggleDocumentSelection);
   const selectedIds = useWorkspaceStore((state) => state.selectedDocumentIds);
+  const sortKey = useWorkspaceStore((state) => state.sortKey);
+  const sortDir = useWorkspaceStore((state) => state.sortDir);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [renameTarget, setRenameTarget] = useState<DocumentMetadata | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DocumentMetadata | null>(null);
+  const { addToContext, isPinned } = useAddToContext();
+  const reprocess = useReprocessDocument();
 
   const { data: response, isLoading, isError } = useQuery({
     queryKey: ['documents', searchQuery],
     queryFn: () => documentsApi.getAll({ q: searchQuery }),
+    // Live-refresh while any document is still being ingested.
+    refetchInterval: (query) =>
+      (query.state.data?.items ?? []).some((d) => isDocumentProcessing(d.status)) ? 4000 : false,
   });
 
   const renameMutation = useMutation({
@@ -57,7 +66,10 @@ export function KnowledgeGrid() {
     }
   };
 
-  const documents = response?.items ?? [];
+  const documents = useMemo(
+    () => sortDocuments(response?.items ?? [], sortKey, sortDir),
+    [response?.items, sortKey, sortDir],
+  );
 
   if (isLoading) {
     return (
@@ -119,7 +131,7 @@ export function KnowledgeGrid() {
                   fileType={doc.file_type}
                   sizeBytes={doc.size_bytes}
                   createdAt={doc.created_at}
-                  status={doc.status as any}
+                  status={doc.status}
                   className="shadow-sm hover:shadow-md transition-shadow h-full"
                 />
               </div>
@@ -128,9 +140,24 @@ export function KnowledgeGrid() {
               <ContextMenuItem onClick={() => navigate(`/documents/${doc.id}`)}>
                 <Eye className="mr-2 h-4 w-4" /> Open Preview
               </ContextMenuItem>
+              <ContextMenuItem
+                disabled={!isDocumentReady(doc.status) || isPinned(doc.id)}
+                onClick={() => addToContext(doc)}
+              >
+                <MessageSquarePlus className="mr-2 h-4 w-4" />
+                {isPinned(doc.id) ? 'In chat context' : 'Add to chat context'}
+              </ContextMenuItem>
               <ContextMenuItem onClick={() => handleDownload(doc)}>
                 <Download className="mr-2 h-4 w-4" /> Download
               </ContextMenuItem>
+              {isDocumentFailed(doc.status) && (
+                <ContextMenuItem
+                  disabled={reprocess.isPending}
+                  onClick={() => reprocess.mutate(doc.id)}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" /> Retry processing
+                </ContextMenuItem>
+              )}
               <ContextMenuSeparator />
               <ContextMenuItem onClick={() => setRenameTarget(doc)}>
                 <Pencil className="mr-2 h-4 w-4" /> Rename...

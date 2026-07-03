@@ -25,6 +25,9 @@ class AgentState(TypedDict):
     confidence: float
     citations: list[dict]
     verification_feedback: str
+    # Number of critic->reasoner revision cycles taken. Bounded to prevent an
+    # unbounded loop when confidence never crosses the acceptance threshold.
+    revision_count: int
     
     # End state
     final_response: str

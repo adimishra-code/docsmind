@@ -43,7 +43,7 @@ export function TopNavigation() {
     : user?.email?.[0]?.toUpperCase() ?? 'U';
 
   return (
-    <header className="flex h-14 items-center justify-between border-b px-6 bg-card shrink-0">
+    <header className="flex h-14 items-center justify-between border-b px-6 bg-background/85 backdrop-blur-sm supports-[backdrop-filter]:bg-background/70 shrink-0 sticky top-0 z-20">
       {/* Breadcrumbs */}
       <nav className="flex items-center gap-1.5 text-sm">
         <Link to="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
@@ -102,7 +102,7 @@ export function TopNavigation() {
             <Button variant="ghost" className="relative h-9 w-9 rounded-full ml-1">
               <Avatar className="h-8 w-8">
                 <AvatarImage src="" alt={user?.full_name ?? ''} />
-                <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+                <AvatarFallback className="bg-foreground text-background text-xs font-medium">
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -112,7 +112,7 @@ export function TopNavigation() {
             <div className="flex items-center gap-2 p-2">
               <Avatar className="h-8 w-8">
                 <AvatarImage src="" alt={user?.full_name ?? ''} />
-                <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+                <AvatarFallback className="bg-foreground text-background text-xs font-medium">
                   {initials}
                 </AvatarFallback>
               </Avatar>

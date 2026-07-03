@@ -57,3 +57,9 @@ class RateLimitError(AppError):
     status_code = 429
     code = "rate_limited"
     message = "Too many requests. Please slow down."
+
+
+class ServiceUnavailableError(AppError):
+    status_code = 503
+    code = "service_unavailable"
+    message = "This service is temporarily unavailable."

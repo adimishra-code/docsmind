@@ -3,11 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 import uuid
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DocumentBase(BaseModel):
     filename: str
+
+
+class DocumentUpdate(BaseModel):
+    """Fields that may be updated via PATCH /documents/{id}."""
+    filename: str = Field(min_length=1, max_length=512)
 
 
 class DocumentResponse(DocumentBase):

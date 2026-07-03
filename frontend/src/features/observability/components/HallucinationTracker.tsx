@@ -3,6 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { AlertTriangle, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
+/**
+ * Faithfulness / hallucination metrics require persisted evaluation runs
+ * (see backend app/services/rag/evaluator.py) which are not yet aggregated
+ * behind an API. Rather than display fabricated scores, this panel is honest
+ * about the metric not being available yet. Do NOT hardcode sample numbers
+ * here — wire this to a real metrics endpoint when one exists.
+ */
 export function HallucinationTracker() {
   return (
     <div className="space-y-6">
@@ -10,10 +17,11 @@ export function HallucinationTracker() {
         <AlertTriangle className="h-4 w-4" />
         <AlertTitle>Hallucination Detection</AlertTitle>
         <AlertDescription>
-          This dashboard tracks responses where the LLM generated claims that could not be mapped to the retrieved context chunks (Faithfulness failure).
+          This dashboard will track responses where the LLM generated claims that could not be
+          mapped to the retrieved context chunks (faithfulness failures).
         </AlertDescription>
       </Alert>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
@@ -21,31 +29,36 @@ export function HallucinationTracker() {
             <CardDescription>Average across all conversations</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold text-success">98.2%</div>
-            <p className="text-sm text-muted-foreground mt-2">1.8% of responses contained unsupported claims.</p>
+            <div className="text-4xl font-bold text-muted-foreground">—</div>
+            <p className="text-sm text-muted-foreground mt-2">
+              Not available yet. Requires evaluation runs to be recorded.
+            </p>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Missing Citations</CardTitle>
             <CardDescription>Responses lacking explicit source attribution</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold text-warning">4.5%</div>
-            <p className="text-sm text-muted-foreground mt-2">Requires prompt tuning to enforce strict citation formatting.</p>
+            <div className="text-4xl font-bold text-muted-foreground">—</div>
+            <p className="text-sm text-muted-foreground mt-2">
+              Not available yet. Requires evaluation runs to be recorded.
+            </p>
           </CardContent>
         </Card>
       </div>
-      
+
       <Card>
         <CardHeader>
           <CardTitle>Recent Flagged Responses</CardTitle>
-          <CardDescription>Click to view the full trace</CardDescription>
+          <CardDescription>Responses flagged by the evaluator will appear here</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-sm text-muted-foreground text-center py-8 border-dashed border-2 rounded-md">
-            No hallucinations detected in the last 24 hours.
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground text-center py-8 border-dashed border-2 rounded-md">
+            <Info className="h-4 w-4" />
+            No evaluation data recorded yet.
           </div>
         </CardContent>
       </Card>

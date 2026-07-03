@@ -11,7 +11,12 @@ import io
 from app.api.deps import CurrentUserDep, DocRepoDep
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.document import Document
-from app.schemas.document import DocumentListResponse, DocumentResponse, DocumentStatusResponse
+from app.schemas.document import (
+    DocumentListResponse,
+    DocumentResponse,
+    DocumentStatusResponse,
+    DocumentUpdate,
+)
 from app.services.storage import get_storage_backend
 from app.workers.tasks import process_document_task
 
@@ -112,18 +117,14 @@ async def rename_document(
     document_id: uuid.UUID,
     doc_repo: DocRepoDep,
     current_user: CurrentUserDep,
-    body: dict,
+    body: DocumentUpdate,
 ) -> Document:
     """Rename a document's filename."""
     doc = await doc_repo.get_by_id_and_user(document_id, current_user.id)
     if not doc:
         raise NotFoundError("Document not found.")
 
-    new_name = body.get("filename")
-    if not new_name or not isinstance(new_name, str):
-        raise ValidationError("filename is required.", code="validation_error")
-
-    doc.filename = new_name
+    doc.filename = body.filename
     doc_repo.session.add(doc)
     await doc_repo.session.commit()
     return doc
@@ -190,6 +191,60 @@ async def get_document_status(
         "progress_pct": progress,
         "error_message": doc.error_message,
     }
+
+
+@router.post(
+    "/{document_id}/reprocess",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Re-run ingestion for a document",
+)
+async def reprocess_document(
+    document_id: uuid.UUID,
+    doc_repo: DocRepoDep,
+    current_user: CurrentUserDep,
+) -> Document:
+    """Re-run the ingestion pipeline for a document, typically after a failure.
+
+    Resets the document to ``pending``, clears any prior error, and re-dispatches
+    the background parser (Celery, with a synchronous fallback — mirroring upload).
+    """
+    doc = await doc_repo.get_by_id_and_user(document_id, current_user.id)
+    if not doc:
+        raise NotFoundError("Document not found.")
+    if doc.status == "processing":
+        raise ValidationError("Document is already being processed.", code="already_processing")
+
+    doc.status = "pending"
+    doc.error_message = None
+    doc_repo.session.add(doc)
+    await doc_repo.session.commit()
+
+    try:
+        process_document_task.delay(
+            str(doc.id),
+            chunk_strategy="recursive_character",
+            chunk_size=512,
+            chunk_overlap=64,
+        )
+    except Exception:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("Celery unavailable, reprocessing document %s synchronously", doc.id)
+        from app.workers.tasks import async_process_document, run_async
+        try:
+            run_async(
+                async_process_document(
+                    document_id_str=str(doc.id),
+                    chunk_strategy="recursive_character",
+                    chunk_size=512,
+                    chunk_overlap=64,
+                )
+            )
+        except Exception as exc:
+            logger.error("Synchronous reprocessing failed for %s: %s", doc.id, exc)
+
+    return doc
 
 
 @router.get(

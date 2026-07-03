@@ -16,10 +16,16 @@ from app.services.agents.nodes.composer import composer_node
 
 logger = get_logger(__name__)
 
+# Maximum number of critic -> reasoner revision cycles before we accept the
+# current draft and move on. Prevents an unbounded loop (and runaway LLM cost /
+# LangGraph GraphRecursionError) when confidence never reaches the threshold.
+MAX_REVISIONS = 2
+
 
 def route_verification(state: AgentState) -> str:
     confidence = state.get("confidence", 1.0)
-    if confidence < 0.7:
+    revisions = state.get("revision_count", 0)
+    if confidence < 0.7 and revisions < MAX_REVISIONS:
         return "critic"
     return "composer"
 

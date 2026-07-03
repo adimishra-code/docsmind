@@ -230,6 +230,54 @@ async def test_update_profile(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_delete_account(client: AsyncClient) -> None:
+    """Test that a user can permanently delete their own account."""
+    email = "deleteme@example.com"
+    await client.post(
+        "/auth/register",
+        json={"email": email, "password": "securepassword123"},
+    )
+    login_resp = await client.post(
+        "/auth/login",
+        json={"email": email, "password": "securepassword123"},
+    )
+    tokens = login_resp.json()
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    # Delete the account
+    delete_resp = await client.delete("/auth/me", headers=headers)
+    assert delete_resp.status_code == 204
+
+    # The refresh token must be revoked along with the user (cascade delete)
+    refresh_resp = await client.post(
+        "/auth/refresh",
+        json={"refresh_token": tokens["refresh_token"]},
+    )
+    assert refresh_resp.status_code == 401
+
+    # Login with the deleted account must fail
+    relogin_resp = await client.post(
+        "/auth/login",
+        json={"email": email, "password": "securepassword123"},
+    )
+    assert relogin_resp.status_code == 401
+
+    # The email is now free to register again
+    reregister_resp = await client.post(
+        "/auth/register",
+        json={"email": email, "password": "securepassword123"},
+    )
+    assert reregister_resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_delete_account_requires_auth(client: AsyncClient) -> None:
+    """Test that account deletion rejects unauthenticated requests."""
+    response = await client.delete("/auth/me")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_password_reset_flow(client: AsyncClient) -> None:
     """Test full forgot-password, verify, and reset-password flow."""
     email = "resetpwd@example.com"

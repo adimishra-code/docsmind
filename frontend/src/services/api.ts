@@ -12,6 +12,37 @@ export const api = axios.create({
   withCredentials: true, // Crucial for HttpOnly refresh tokens if used
 });
 
+// Single-flight refresh usable outside the axios interceptor (e.g. the raw
+// fetch() used for SSE streaming, which cannot go through axios). Concurrent
+// callers share one in-flight refresh so we never hit /auth/refresh twice at
+// once (which would break refresh-token rotation).
+let refreshPromise: Promise<string> | null = null;
+
+export async function refreshAccessToken(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const refreshToken = localStorage.getItem('docsmind-refresh-token');
+      if (!refreshToken) {
+        throw new Error('No refresh token available');
+      }
+      const { data } = await axios.post(
+        `${API_BASE_URL}/api/v1/auth/refresh`,
+        { refresh_token: refreshToken },
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+      useAuthStore.getState().setAccessToken(data.access_token);
+      if (data.refresh_token) {
+        localStorage.setItem('docsmind-refresh-token', data.refresh_token);
+      }
+      return data.access_token as string;
+    })();
+    refreshPromise.finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 let isRefreshing = false;
 let failedQueue: Array<{
   resolve: (value?: unknown) => void;

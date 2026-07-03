@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTaskStore } from '@/store/useTaskStore';
 import { useQuery } from '@tanstack/react-query';
-import { documentsApi } from '@/services/documentsApi';
+import { documentsApi, isDocumentReady, isDocumentFailed, isDocumentProcessing } from '@/services/documentsApi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -13,10 +13,9 @@ export function BackgroundTaskCenter() {
   const { tasks, isTaskCenterOpen, toggleTaskCenter, updateTask, clearCompleted } = useTaskStore();
   const taskList = Object.values(tasks);
 
-  // Polling logic for pending tasks
-  const pendingTasks = taskList.filter(t => 
-    !['completed', 'failed', 'uploading'].includes(t.status)
-  );
+  // Poll server-side status for tasks still being ingested (skip local-only
+  // 'uploading' state and anything already terminal).
+  const pendingTasks = taskList.filter(t => t.status !== 'uploading' && isDocumentProcessing(t.status));
 
   useQuery({
     queryKey: ['task-polling', pendingTasks.map(t => t.id)],
@@ -25,7 +24,7 @@ export function BackgroundTaskCenter() {
         if (task.id.startsWith('temp-')) continue;
         try {
           const res = await documentsApi.getStatus(task.id);
-          updateTask(task.id, { status: res.status as any, progress: (res as any).progress_pct ?? (res.status === 'ready' ? 100 : 50) });
+          updateTask(task.id, { status: res.status as any, progress: (res as any).progress_pct ?? (isDocumentReady(res.status) ? 100 : 50) });
         } catch (error) {
           updateTask(task.id, { status: 'failed', error: 'Failed to fetch status' });
         }
@@ -64,9 +63,9 @@ export function BackgroundTaskCenter() {
                 <div key={task.id} className="p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium truncate pr-4">{task.filename}</span>
-                    {task.status === 'completed' && <CheckCircle className="h-4 w-4 text-success flex-shrink-0" />}
-                    {task.status === 'failed' && <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />}
-                    {['queued', 'ocr', 'parsing', 'chunking', 'embedding', 'uploading'].includes(task.status) && (
+                    {isDocumentReady(task.status) && <CheckCircle className="h-4 w-4 text-success flex-shrink-0" />}
+                    {isDocumentFailed(task.status) && <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />}
+                    {isDocumentProcessing(task.status) && (
                       <Loader2 className="h-4 w-4 text-muted-foreground animate-spin flex-shrink-0" />
                     )}
                   </div>

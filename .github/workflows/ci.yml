@@ -70,19 +70,64 @@ jobs:
       run: npm ci
 
     - name: ESLint
-      run: npm run lint || true
+      run: npm run lint
 
     - name: Type Check
       run: npx tsc --noEmit
 
     - name: Run vitest
-      run: npx vitest run --reporter=verbose || true
+      run: npx vitest run --reporter=verbose
 
     - name: Build Test
       run: npm run build
 
+  migration-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: docsmind
+          POSTGRES_PASSWORD: docsmind
+          POSTGRES_DB: docsmind_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U docsmind"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: 'pip'
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio
+
+    - name: Run migrations against PostgreSQL and assert model/DB parity
+      run: pytest tests/test_migrations.py -v
+      env:
+        RUN_MIGRATION_TESTS: "1"
+        SECRET_KEY: ${{ env.SECRET_KEY }}
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: "5432"
+        POSTGRES_USER: docsmind
+        POSTGRES_PASSWORD: docsmind
+        POSTGRES_DB: docsmind_ci
+
   docker-build-verify:
-    needs: [backend-lint-test, frontend-lint-test]
+    needs: [backend-lint-test, frontend-lint-test, migration-check]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:

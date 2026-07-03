@@ -2,13 +2,14 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
+import { documentStatusLabel, documentStatusVariant } from '@/services/documentsApi';
 
 interface MetadataCardProps {
   filename: string;
   fileType: string;
   sizeBytes: number;
   createdAt: string;
-  status: 'processing' | 'ready' | 'failed';
+  status: string;
   className?: string;
 }
 
@@ -21,8 +22,8 @@ export function MetadataCard({ filename, fileType, sizeBytes, createdAt, status,
       <CardHeader className="pb-2">
         <CardTitle className="text-lg font-medium break-all">{filename}</CardTitle>
         <div className="flex space-x-2 mt-2">
-          <Badge variant={status === 'ready' ? 'default' : status === 'failed' ? 'destructive' : 'secondary'}>
-            {status.toUpperCase()}
+          <Badge variant={documentStatusVariant(status)}>
+            {documentStatusLabel(status).toUpperCase()}
           </Badge>
           <Badge variant="outline">{fileType.toUpperCase()}</Badge>
         </div>

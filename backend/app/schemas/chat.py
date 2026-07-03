@@ -22,6 +22,12 @@ class ChatSessionCreate(ChatSessionBase):
     pass
 
 
+class ChatSessionUpdate(BaseModel):
+    """Fields that may be updated via PATCH /chat/sessions/{id}."""
+    title: str | None = None
+    is_pinned: bool | None = None
+
+
 class ChatSessionResponse(ChatSessionBase):
     id: uuid.UUID
     user_id: uuid.UUID

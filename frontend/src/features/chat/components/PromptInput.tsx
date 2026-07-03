@@ -1,7 +1,7 @@
 import React, { useState, useRef, KeyboardEvent } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import { Button } from '@/components/ui/button';
-import { Send, Paperclip, StopCircle } from 'lucide-react';
+import { Send, StopCircle } from 'lucide-react';
 import { useConversationStore } from '@/store/useConversationStore';
 import { useChatStream } from '../hooks/useChatStream';
 
@@ -39,17 +39,8 @@ export function PromptInput() {
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      className="relative flex w-full items-end gap-2 bg-card border rounded-xl p-2 shadow-sm focus-within:ring-1 focus-within:ring-ring transition-all duration-150"
+      className="relative flex w-full items-end gap-2 bg-card border rounded-xl p-2 pl-3.5 shadow-sm focus-within:ring-1 focus-within:ring-ring transition-all duration-150"
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="shrink-0 h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
-      >
-        <Paperclip className="h-4 w-4" />
-      </Button>
-
       <TextareaAutosize
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}

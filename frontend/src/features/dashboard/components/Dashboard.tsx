@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatGrid } from '@/components/analytics/StatGrid';
-import { documentsApi } from '@/services/documentsApi';
+import { documentsApi, isDocumentProcessing } from '@/services/documentsApi';
 import { chatApi } from '@/services/chatApi';
 import { observabilityApi } from '@/services/observabilityApi';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -64,6 +64,10 @@ export function Dashboard() {
     queryKey: ['documents'],
     queryFn: () => documentsApi.getAll({ limit: 10 }),
     staleTime: 60_000,
+    // Keep recent activity + counts live while any document is still ingesting;
+    // stop once everything reaches a terminal state. Mirrors the workspace grid.
+    refetchInterval: (query) =>
+      (query.state.data?.items ?? []).some((d) => isDocumentProcessing(d.status)) ? 4000 : false,
   });
 
   const { data: chatsData, isLoading: chatsLoading } = useQuery({
@@ -112,9 +116,9 @@ export function Dashboard() {
     <div className="p-6 max-w-[1200px] mx-auto space-y-8 animate-fade-in">
       {/* Welcome */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome back, {firstName} 👋</h1>
-        <p className="text-muted-foreground mt-1">
-          Here's what's happening in your DocsMind workspace.
+        <h1 className="text-[26px] font-semibold tracking-tight text-balance">Welcome back, {firstName}</h1>
+        <p className="text-muted-foreground mt-1.5">
+          Here's what's happening in your workspace.
         </p>
       </div>
 
@@ -135,7 +139,7 @@ export function Dashboard() {
                 onClick={() => navigate(action.href)}
                 className="flex items-center gap-3 w-full p-3 rounded-lg text-left hover:bg-accent transition-colors group"
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-secondary/60 text-foreground group-hover:bg-background transition-colors">
                   <action.icon className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">

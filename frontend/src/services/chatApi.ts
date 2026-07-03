@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, refreshAccessToken } from './api';
 import { useAuthStore } from '@/store/useAuthStore';
 
 export interface Message {
@@ -60,17 +60,32 @@ export const chatApi = {
     multi_query?: boolean;
     expand_context?: boolean;
   }): Promise<Response> => {
-    const response = await fetch(
-      `${import.meta.env.VITE_API_URL || 'http://localhost:8006'}/api/v1/chat/sessions/${sessionId}/messages`,
-      {
+    const url = `${import.meta.env.VITE_API_URL || 'http://localhost:8006'}/api/v1/chat/sessions/${sessionId}/messages`;
+    const body = JSON.stringify({ content, ...options });
+
+    const doFetch = (token: string | null) =>
+      fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${useAuthStore.getState().accessToken}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ content, ...options }),
+        body,
+      });
+
+    // The SSE stream uses raw fetch(), so it bypasses the axios 401-refresh
+    // interceptor. Handle an expired access token here: refresh once and retry.
+    let response = await doFetch(useAuthStore.getState().accessToken);
+    if (response.status === 401) {
+      try {
+        const newToken = await refreshAccessToken();
+        response = await doFetch(newToken);
+      } catch {
+        useAuthStore.getState().clearAuth();
+        window.location.href = '/login';
+        return response;
       }
-    );
+    }
     return response;
   },
 };

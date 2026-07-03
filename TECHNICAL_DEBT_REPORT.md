@@ -276,6 +276,34 @@
 
 ---
 
+### 15. Server-Side Defaults in Async SQLAlchemy
+
+**Impact:** Using `server_default=func.now()` / `onupdate=func.now()` in async ORM models causes `MissingGreenlet` on response serialization after commit.
+
+**Fix Applied:** Changed `TimestampMixin` to Python-side `default=_utcnow` / `onupdate=_utcnow`.
+
+**Recommendation:** Avoid SQL function defaults in async models. Use Python callables.
+
+---
+
+### 16. asyncpg Python 3.14 Timezone Handling
+
+**Impact:** asyncpg 0.31.0 returns timezone-naive datetimes despite `DateTime(timezone=True)`, causing `TypeError` on comparison with aware datetimes.
+
+**Fix Applied:** Defensive `tzinfo.replace(UTC)` added to all datetime comparisons in `user.py` (4 locations).
+
+**Recommendation:** Monitor asyncpg for Python 3.14 fix.
+
+---
+
+### 17. Missing Migration Source
+
+**Impact:** `a00000000001_add_missing_indexes.py` exists only as `.pyc` bytecode. Source file deleted. Migration not applied. Columns appear to exist (manually created).
+
+**Recommendation:** Recreate the migration source or verify against actual schema.
+
+---
+
 ## Conclusion
 
-DocsMind has 14 identified technical debt items totaling ~22.5 days of effort. The highest priority items (parsers, S3, Celery) directly impact user functionality and deployment capability. The medium priority items (contract testing, error boundaries) prevent recurring bugs like the 21 fixed during this audit. The low priority items improve observability and developer experience for long-term maintainability.
+DocsMind has 17 identified technical debt items totaling ~24 days of effort. The highest priority items (parsers, S3, Celery) directly impact user functionality and deployment capability. The medium priority items (contract testing, error boundaries, async engine defaults) prevent recurring bugs like the HTTP 500 errors fixed in this session. The low priority items improve observability and developer experience for long-term maintainability.

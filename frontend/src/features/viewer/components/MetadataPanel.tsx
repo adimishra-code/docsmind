@@ -1,8 +1,8 @@
 import React from 'react';
-import { DocumentMetadata } from '@/services/documentsApi';
+import { DocumentMetadata, documentStatusLabel } from '@/services/documentsApi';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
-import { FileText, Database, Info } from 'lucide-react';
+import { Database, Info } from 'lucide-react';
 
 export function MetadataPanel({ document }: { document: DocumentMetadata }) {
   return (
@@ -41,15 +41,11 @@ export function MetadataPanel({ document }: { document: DocumentMetadata }) {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Status</span>
-                <span className="font-medium capitalize">{document.status}</span>
+                <span className="font-medium">{documentStatusLabel(document.status)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Chunks</span>
                 <span className="font-medium">{document.chunk_count || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Embedding Model</span>
-                <span className="font-medium">OpenAI text-embedding-3-small</span>
               </div>
             </div>
           </section>

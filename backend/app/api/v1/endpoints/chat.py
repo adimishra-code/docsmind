@@ -15,6 +15,7 @@ from app.schemas.chat import (
     ChatSessionDetailResponse,
     ChatSessionListResponse,
     ChatSessionResponse,
+    ChatSessionUpdate,
 )
 from app.services.rag.chat import ChatService
 
@@ -105,7 +106,7 @@ async def delete_chat_session(
 )
 async def update_chat_session(
     session_id: uuid.UUID,
-    body: dict,
+    body: ChatSessionUpdate,
     chat_repo: ChatRepoDep,
     current_user: CurrentUserDep,
 ) -> ChatSession:
@@ -114,10 +115,10 @@ async def update_chat_session(
     if not session:
         raise NotFoundError("Chat session not found.")
 
-    if "title" in body and isinstance(body["title"], str):
-        session.title = body["title"].strip() or "Untitled Chat"
-    if "is_pinned" in body and isinstance(body["is_pinned"], bool):
-        session.is_pinned = body["is_pinned"]
+    if body.title is not None:
+        session.title = body.title.strip() or "Untitled Chat"
+    if body.is_pinned is not None:
+        session.is_pinned = body.is_pinned
 
     chat_repo.session.add(session)
     await chat_repo.session.commit()

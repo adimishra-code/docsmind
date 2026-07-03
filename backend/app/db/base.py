@@ -8,10 +8,14 @@ never hand-rolled per table.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, func
+from sqlalchemy import DateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class Base(DeclarativeBase):
@@ -28,12 +32,12 @@ class UUIDPrimaryKeyMixin:
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        server_default=func.now(),
+        default=_utcnow,
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=_utcnow,
+        onupdate=_utcnow,
         nullable=False,
     )

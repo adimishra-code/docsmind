@@ -58,6 +58,10 @@ export const authApi = {
     return data;
   },
 
+  deleteMe: async (): Promise<void> => {
+    await api.delete('/api/v1/auth/me');
+  },
+
   resendVerification: async (email: string): Promise<MessageResponse> => {
     const { data } = await api.post<MessageResponse>('/api/v1/auth/resend-verification', { email });
     return data;

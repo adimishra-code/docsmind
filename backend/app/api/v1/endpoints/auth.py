@@ -6,9 +6,11 @@ import httpx
 from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import RedirectResponse
 
-from app.api.deps import AuthServiceDep, CurrentUserDep, UserServiceDep
+from app.api.deps import AuthServiceDep, CurrentUserDep, DocRepoDep, UserServiceDep
 from app.api.middleware.throttle import RegisterThrottle
 from app.core.config import settings
+from app.core.exceptions import ServiceUnavailableError
+from app.core.logging import get_logger
 from app.schemas.user import (
     LoginRequest,
     MessageResponse,
@@ -24,6 +26,7 @@ from app.schemas.user import (
 from app.services.email import send_verification_email, send_welcome_email, send_password_reset_email
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +198,69 @@ async def update_me(
     return user
 
 
+@router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete current user account",
+)
+async def delete_me(
+    current_user: CurrentUserDep,
+    user_service: UserServiceDep,
+    doc_repo: DocRepoDep,
+) -> Response:
+    """Permanently delete the current account and all associated data.
+
+    Database rows (documents, chunks, chat sessions, messages, refresh tokens)
+    cascade from the ``users`` row. External state — object-storage binaries and
+    Qdrant/BM25 indexes — is cleaned up best-effort first, since the user has
+    explicitly requested erasure and residual index entries must not survive.
+    """
+    from app.db.redis import redis_client
+    from app.services.rag.bm25_manager import BM25IndexManager
+    from app.services.rag.vector_store import QdrantAdapter
+    from app.services.storage import get_storage_backend
+
+    user_id = current_user.id
+    storage = None
+    vector_store = None
+
+    skip = 0
+    had_documents = False
+    while True:
+        documents, _total = await doc_repo.get_multi_by_user(user_id, skip=skip, limit=200)
+        if not documents:
+            break
+        if storage is None:
+            storage = get_storage_backend()
+            vector_store = QdrantAdapter()
+        had_documents = True
+        for doc in documents:
+            try:
+                await storage.delete(doc.storage_path)
+            except Exception:
+                logger.warning("Storage cleanup failed during account deletion", document_id=str(doc.id))
+            try:
+                await vector_store.delete_by_document("document_chunks", doc.id, user_id)
+            except Exception:
+                logger.warning("Vector cleanup failed during account deletion", document_id=str(doc.id))
+        if len(documents) < 200:
+            break
+        skip += 200
+
+    if had_documents:
+        try:
+            await BM25IndexManager(redis_client).invalidate(user_id)
+        except Exception:
+            logger.warning("BM25 invalidation failed during account deletion", user_id=str(user_id))
+
+    # Cascades to documents, chunks, chats, messages and refresh tokens.
+    await user_service.user_repo.delete(user_id)
+    await user_service.user_repo.session.commit()
+
+    logger.info("User account deleted", user_id=str(user_id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 # ---------------------------------------------------------------------------
 # Password Reset
 # ---------------------------------------------------------------------------
@@ -268,11 +334,7 @@ async def reset_password(
 async def google_login() -> RedirectResponse:
     """Redirect user to Google's OAuth2 consent screen."""
     if not settings.google_oauth_enabled:
-        from fastapi import HTTPException
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Google OAuth is not configured on this server.",
-        )
+        raise ServiceUnavailableError("Google OAuth is not configured on this server.")
 
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
@@ -363,7 +425,6 @@ async def google_callback(
         return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
     except Exception as exc:
-        import logging
-        logging.getLogger(__name__).error("Google OAuth error: %s", exc)
+        logger.error("Google OAuth error", error=str(exc))
         redirect_url = f"{settings.FRONTEND_URL}/login?error=google_oauth_failed"
         return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)

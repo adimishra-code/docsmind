@@ -24,6 +24,7 @@ export function Settings() {
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleSaveProfile = async () => {
     setIsSaving(true);
@@ -41,13 +42,24 @@ export function Settings() {
   };
 
   const handleDeleteAccount = async () => {
-    // For now, log out and show a message — actual deletion would need a backend endpoint
-    toast({
-      title: 'Account deletion requested',
-      description: 'Please contact support to complete account deletion.',
-    });
-    setShowDeleteDialog(false);
-    clearAuth();
+    setIsDeleting(true);
+    try {
+      await authApi.deleteMe();
+      toast({
+        title: 'Account deleted',
+        description: 'Your account and all associated data have been permanently removed.',
+      });
+      setShowDeleteDialog(false);
+      clearAuth();
+    } catch {
+      toast({
+        title: 'Deletion failed',
+        variant: 'destructive',
+        description: 'We could not delete your account. Please try again.',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const nameChanged = (name.trim() || null) !== (user?.full_name ?? null);
@@ -200,12 +212,14 @@ export function Settings() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)} disabled={isDeleting}>Cancel</Button>
             <Button
               variant="destructive"
-              disabled={deleteConfirmText !== 'delete my account'}
+              disabled={deleteConfirmText !== 'delete my account' || isDeleting}
               onClick={handleDeleteAccount}
+              className="gap-2"
             >
+              {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
               Delete Account
             </Button>
           </DialogFooter>

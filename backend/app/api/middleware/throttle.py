@@ -1,10 +1,11 @@
 """Per-endpoint throttle dependency for stricter rate limiting on sensitive routes."""
 from __future__ import annotations
 
-from fastapi import Request, HTTPException, status, Depends
+from fastapi import Request, Depends
 from typing import Annotated
 
 from app.api.deps import RedisDep
+from app.core.exceptions import RateLimitError
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -21,15 +22,13 @@ def throttle(max_requests: int, window_seconds: int, key_prefix: str = "throttle
             pipe.incr(cache_key)
             pipe.expire(cache_key, window_seconds)
             results = await pipe.execute()
-            if results[0] > max_requests:
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail="Too many requests. Please slow down.",
-                )
-        except HTTPException:
-            raise
         except Exception:
+            # Fail open: a Redis outage should not take down the endpoint.
             logger.warning("Throttle check failed — allowing request through", client_ip=client_ip)
+            return
+
+        if results[0] > max_requests:
+            raise RateLimitError("Too many requests. Please slow down.")
 
     return _throttle_dependency
 
