@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     LLM_API_KEY: str | None = None
     # Model used when LLM_PROVIDER=local (HuggingFace text-generation model id).
     LOCAL_LLM_MODEL: str = "Qwen/Qwen2.5-0.5B-Instruct"
-    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_URL: str | None = None
     QDRANT_API_KEY: str | None = None
     QDRANT_STORAGE_PATH: str = "storage/qdrant"
     EMBEDDING_PROVIDER: str = "openai"

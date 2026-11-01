@@ -74,20 +74,22 @@ class QdrantAdapter(VectorStoreInterface):
             self.client = QdrantAdapter._shared_client
             return
 
-        if settings.QDRANT_URL:
+        # Remote Qdrant: only if QDRANT_URL is set and not empty
+        qdrant_url = (settings.QDRANT_URL or "").strip()
+        if qdrant_url:
             try:
                 client = AsyncQdrantClient(
-                    url=settings.QDRANT_URL,
+                    url=qdrant_url,
                     api_key=settings.QDRANT_API_KEY,
                 )
-                logger.info("Initializing remote Async Qdrant client", url=settings.QDRANT_URL)
+                logger.info("Initializing remote Async Qdrant client", url=qdrant_url)
                 QdrantAdapter._shared_client = client
                 QdrantAdapter._shared_is_local = False
                 self.client = client
                 return
             except Exception:
                 logger.warning("Qdrant remote URL unreachable, falling back to local disk",
-                               url=settings.QDRANT_URL)
+                               url=qdrant_url)
 
         os.makedirs(settings.QDRANT_STORAGE_PATH, exist_ok=True)
         logger.info("Initializing local disk Async Qdrant client", path=settings.QDRANT_STORAGE_PATH)
@@ -97,17 +99,16 @@ class QdrantAdapter(VectorStoreInterface):
         self._using_local = True
 
     async def _fallback_to_local_if_needed(self, exc: Exception) -> bool:
-        """If remote Qdrant failed in development, switch to embedded local disk."""
-        if not getattr(self, "_using_local", False) and not settings.is_production:
+        """If remote Qdrant failed, switch to embedded local disk."""
+        if not getattr(self, "_using_local", False):
             logger.warning(
                 "Remote Qdrant connection failed, failing over to embedded local disk Qdrant",
                 error=str(exc),
                 path=settings.QDRANT_STORAGE_PATH,
             )
             os.makedirs(settings.QDRANT_STORAGE_PATH, exist_ok=True)
-            if not getattr(QdrantAdapter, "_shared_is_local", False) or QdrantAdapter._shared_client is None:
-                QdrantAdapter._shared_client = AsyncQdrantClient(path=settings.QDRANT_STORAGE_PATH)
-                QdrantAdapter._shared_is_local = True
+            QdrantAdapter._shared_client = AsyncQdrantClient(path=settings.QDRANT_STORAGE_PATH)
+            QdrantAdapter._shared_is_local = True
             self.client = QdrantAdapter._shared_client
             self._using_local = True
             return True
