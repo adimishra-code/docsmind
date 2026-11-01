@@ -69,7 +69,7 @@ export function Register() {
     <div className="min-h-screen w-full flex items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-[440px] flex flex-col my-8">
         <div className="mb-8 flex flex-col items-center">
-          <div className="h-10 w-10 bg-primary text-primary-foreground rounded-lg flex items-center justify-center mb-4 font-semibold text-sm">
+          <div className="h-10 w-10 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-xl flex items-center justify-center mb-4 font-bold text-sm shadow-md">
             DM
           </div>
           <h1 className="text-xl font-semibold tracking-tight text-foreground">Create an account</h1>

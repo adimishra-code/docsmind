@@ -88,9 +88,9 @@ export function Sidebar({ collapsed }: SidebarProps) {
           collapsed ? 'justify-center' : 'justify-between'
         )}>
           {!collapsed && (
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-foreground text-background text-[13px] font-semibold">
-                D
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white text-[11px] font-bold shadow-sm">
+                DM
               </div>
               <span className="text-[15px] font-semibold tracking-tight">DocsMind</span>
             </div>
