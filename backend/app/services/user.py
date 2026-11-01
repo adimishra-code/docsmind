@@ -44,7 +44,7 @@ class UserService:
             "full_name": getattr(user_in, "full_name", None),
             "is_active": True,
             "is_admin": False,
-            "email_verified": settings.ENVIRONMENT == "development",
+            "email_verified": not settings.REQUIRE_EMAIL_VERIFICATION or settings.ENVIRONMENT == "development",
             "email_verification_token": verification_token,
             "email_verification_sent_at": datetime.now(UTC),
         }

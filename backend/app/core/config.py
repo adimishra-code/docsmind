@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = "DocsMind"
     SMTP_TLS: bool = True
     EMAILS_ENABLED: bool = True
+    REQUIRE_EMAIL_VERIFICATION: bool = Field(
+        default=False,
+        description="Whether email verification is strictly required to log in",
+    )
     # Google Apps Script Gmail relay (port 443, passwordless Gmail sending)
     GMAIL_RELAY_URL: str | None = None
     GMAIL_RELAY_SECRET: str | None = None

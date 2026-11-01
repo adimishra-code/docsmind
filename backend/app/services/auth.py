@@ -117,8 +117,8 @@ class AuthService:
             await self._log_audit(user.id, "login", "failure", "Invalid password")
             raise AuthenticationError("Incorrect email or password.")
 
-        # Require email verification (Google users are auto-verified)
-        if not user.email_verified:
+        # Require email verification if strictly configured
+        if settings.REQUIRE_EMAIL_VERIFICATION and not user.email_verified:
             raise AuthenticationError(
                 "Please verify your email address before logging in. "
                 "Check your inbox or request a new verification email.",

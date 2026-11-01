@@ -3,7 +3,7 @@ from __future__ import annotations
 import urllib.parse
 
 import httpx
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from app.api.deps import AuthServiceDep, CurrentUserDep, DocRepoDep, UserServiceDep
@@ -43,17 +43,17 @@ async def register(
     _: RegisterThrottle,
     user_in: UserCreate,
     user_service: UserServiceDep,
+    background_tasks: BackgroundTasks,
 ) -> MessageResponse:
-    """Create a new user account. Sends an email verification link."""
+    """Create a new user account. Sends an email verification link in the background."""
     user = await user_service.create_user(user_in)
     session = user_service.user_repo.session
-    await session.flush()
-
-    # Send verification email (non-blocking — failure won't abort registration)
-    if user.email_verification_token:
-        await send_verification_email(user.email, user.email_verification_token)
-
     await session.commit()
+
+    # Send verification email in background (non-blocking)
+    if user.email_verification_token:
+        background_tasks.add_task(send_verification_email, user.email, user.email_verification_token)
+
     return MessageResponse(
         message="Registration successful! Please check your email to verify your account."
     )
@@ -279,18 +279,18 @@ async def delete_me(
 async def forgot_password(
     body: PasswordResetRequest,
     user_service: UserServiceDep,
+    background_tasks: BackgroundTasks,
 ) -> MessageResponse:
     """Send a password reset link to the given email if an account exists.
     Always returns the same message to prevent user enumeration.
     """
     user = await user_service.request_password_reset(body.email)
     session = user_service.user_repo.session
-    await session.flush()
+    await session.commit()
 
     if user and user.password_reset_token:
-        await send_password_reset_email(user.email, user.password_reset_token)
+        background_tasks.add_task(send_password_reset_email, user.email, user.password_reset_token)
 
-    await session.commit()
     return MessageResponse(
         message="If an account with that email exists, you'll receive a password reset link shortly."
     )

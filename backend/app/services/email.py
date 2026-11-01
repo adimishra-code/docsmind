@@ -205,6 +205,7 @@ async def _send_email(
                 username=settings.SMTP_USER,
                 password=settings.SMTP_PASSWORD,
                 start_tls=True,
+                timeout=5.0,
             )
         else:
             context = ssl.create_default_context()
@@ -215,6 +216,7 @@ async def _send_email(
                 username=settings.SMTP_USER,
                 password=settings.SMTP_PASSWORD,
                 tls_context=context,
+                timeout=5.0,
             )
         logger.info("Email sent successfully to %s (subject: %s)", to_email, subject)
         return True
