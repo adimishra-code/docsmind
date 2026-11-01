@@ -247,9 +247,13 @@ class Settings(BaseSettings):
                 "Provide OPENAI_API_KEY or LLM_API_KEY, or set LLM_PROVIDER=ollama / "
                 "LLM_PROVIDER=local to run keyless."
             )
-        if self.POSTGRES_PASSWORD == INSECURE_POSTGRES_PASSWORD:
+        if not self.DATABASE_URL and self.POSTGRES_PASSWORD == INSECURE_POSTGRES_PASSWORD:
             errors.append(
                 "POSTGRES_PASSWORD is still the insecure default 'docsmind'; set a real password."
+            )
+        elif self.DATABASE_URL and f":{INSECURE_POSTGRES_PASSWORD}@" in self.DATABASE_URL:
+            errors.append(
+                "DATABASE_URL contains the insecure default password 'docsmind'; set a real password."
             )
         return errors
 
