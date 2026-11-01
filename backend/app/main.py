@@ -169,13 +169,23 @@ app.add_middleware(LoggingMiddleware)
 
 # 4. CORS configuration
 if settings.BACKEND_CORS_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.BACKEND_CORS_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
-    )
+    cors_origins = [str(o) for o in settings.BACKEND_CORS_ORIGINS]
+    if "*" in cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    else:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+            allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
+        )
 
 # 4.1 Rate Limiting Middleware
 app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)

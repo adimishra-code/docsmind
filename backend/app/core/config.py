@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AliasChoices, Field, PostgresDsn, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: Environment = "development"
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
-    BACKEND_CORS_ORIGINS: list[str] = Field(default_factory=list)
+    BACKEND_CORS_ORIGINS: Any = Field(default_factory=lambda: ["*"])
     FRONTEND_URL: str = "http://localhost:5173"
 
     SECRET_KEY: str = Field(min_length=32)
@@ -115,7 +115,7 @@ class Settings(BaseSettings):
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
-    def _split_cors(cls, value: str | list[str]) -> list[str]:
+    def _split_cors(cls, value: Any) -> list[str]:
         if isinstance(value, str):
             value = value.strip()
             if value.startswith("[") and value.endswith("]"):
@@ -127,7 +127,9 @@ class Settings(BaseSettings):
                 except Exception:
                     pass
             return [origin.strip() for origin in value.split(",") if origin.strip()]
-        return value
+        if isinstance(value, list):
+            return [str(o).strip() for o in value if str(o).strip()]
+        return ["*"]
 
     @field_validator("SMTP_FROM_EMAIL", mode="before")
     @classmethod
