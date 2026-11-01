@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
   documentsApi,
@@ -21,13 +21,27 @@ import { FileText, Download, Loader2, AlertTriangle, RefreshCw } from 'lucide-re
 
 export function KnowledgeEngine() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const setActiveDocument = useViewerStore((state) => state.setActiveDocument);
+  const jumpTo = useViewerStore((state) => state.jumpTo);
   const { isMetadataPanelOpen, isTimelinePanelOpen } = useViewerStore();
 
   useEffect(() => {
     if (id) setActiveDocument(id);
     return () => setActiveDocument(null);
   }, [id, setActiveDocument]);
+
+  // Deep-link from a chat citation: `?page=26&highlight=<cited passage>`. Runs
+  // after setActiveDocument (which resets to page 1) so the cited page wins.
+  useEffect(() => {
+    const page = Number(searchParams.get('page'));
+    const highlight = searchParams.get('highlight');
+    if (page && !Number.isNaN(page)) {
+      jumpTo(page, highlight);
+    } else if (highlight) {
+      jumpTo(1, highlight);
+    }
+  }, [searchParams, jumpTo, id]);
 
   const { data: document, isLoading } = useQuery({
     queryKey: ['document', id],

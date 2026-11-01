@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 import uuid
 
@@ -16,9 +17,19 @@ logger = get_logger(__name__)
 
 
 def simple_tokenizer(text: str) -> list[str]:
-    """Tokenize a string into lowercase alphanumeric words."""
-    import re
-    return re.findall(r"\b[a-zA-Z0-9]{2,20}\b", text.lower())
+    """Tokenize text into lowercase word tokens for BM25 indexing.
+
+    Splits on whitespace, underscores, hyphens, and non-alphanumeric characters
+    so that filenames like ``aditya_mishra_cv.pdf`` yield ``["aditya", "mishra",
+    "cv"]`` rather than no tokens.  Words shorter than 2 chars or longer than 20
+    are discarded as noise.
+    """
+    # Replace underscore/hyphen/dot with space so compound tokens are split
+    normalised = re.sub(r"[_\-./\\]", " ", text.lower())
+    return [
+        token
+        for token in re.findall(r"[a-z0-9]{2,20}", normalised)
+    ]
 
 
 class BM25IndexManager:
@@ -31,9 +42,9 @@ class BM25IndexManager:
     def __init__(self, redis: Redis) -> None:
         self.redis = redis
         self.ttl = 3600
-        self._in_memory: dict[str, tuple[BM25Okapi, list[dict[str, Any]]]] = {}
+        self._in_memory: dict[str, tuple[BM25Okapi | None, list[dict[str, Any]]]] = {}
 
-    async def get_or_build_index(self, user_id: uuid.UUID) -> tuple[BM25Okapi, list[dict[str, Any]]]:
+    async def get_or_build_index(self, user_id: uuid.UUID) -> tuple[BM25Okapi | None, list[dict[str, Any]]]:
         """Return a fitted BM25Okapi instance + metadata for the user.
 
         Checks in-memory cache first, then Redis, then rebuilds from DB.
@@ -45,6 +56,11 @@ class BM25IndexManager:
             return cached
 
         corpus, metadata = await self._get_or_build_corpus(user_id)
+        if not corpus:
+            result = (None, [])
+            self._in_memory[uid_str] = result
+            return result
+
         bm25 = BM25Okapi(corpus)
         result = (bm25, metadata)
         self._in_memory[uid_str] = result

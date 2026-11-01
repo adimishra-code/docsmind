@@ -13,6 +13,7 @@ from app.services.agents.nodes.reasoner import reasoner_node
 from app.services.agents.nodes.verifier import verifier_node
 from app.services.agents.nodes.critic import critic_node
 from app.services.agents.nodes.composer import composer_node
+from app.services.agents.nodes.chitchat import chitchat_node
 
 logger = get_logger(__name__)
 
@@ -30,6 +31,14 @@ def route_verification(state: AgentState) -> str:
     return "composer"
 
 
+def route_intent(state: AgentState) -> str:
+    """Greetings / small talk skip retrieval and go straight to a conversational
+    reply; everything else runs the full RAG pipeline."""
+    if state.get("intent") == "greeting":
+        return "chitchat"
+    return "retriever"
+
+
 def build_agent_graph():
     workflow = StateGraph(AgentState)
 
@@ -39,9 +48,15 @@ def build_agent_graph():
     workflow.add_node("verifier", verifier_node)
     workflow.add_node("critic", critic_node)
     workflow.add_node("composer", composer_node)
+    workflow.add_node("chitchat", chitchat_node)
 
     workflow.set_entry_point("planner")
-    workflow.add_edge("planner", "retriever")
+    workflow.add_conditional_edges(
+        "planner",
+        route_intent,
+        {"chitchat": "chitchat", "retriever": "retriever"},
+    )
+    workflow.add_edge("chitchat", END)
     workflow.add_edge("retriever", "reasoner")
     workflow.add_edge("reasoner", "verifier")
 
@@ -74,10 +89,14 @@ async def persist_graph_state(final_state: dict, thread_id: str) -> None:
             existing.status = "completed"
             existing.completed_at = datetime.now(UTC)
         else:
+            parts = thread_id.split(":")
+            u_id = uuid.UUID(parts[0]) if len(parts) >= 2 else uuid.UUID(final_state.get("user_id", "00000000-0000-0000-0000-000000000000"))
+            s_id = uuid.UUID(parts[1]) if len(parts) >= 2 else uuid.UUID(final_state.get("session_id", "00000000-0000-0000-0000-000000000000"))
+
             checkpoint = GraphCheckpoint(
                 thread_id=thread_id,
-                user_id=uuid.UUID(final_state.get("user_id", "00000000-0000-0000-0000-000000000000")),
-                session_id=uuid.UUID(final_state.get("session_id", "00000000-0000-0000-0000-000000000000")),
+                user_id=u_id,
+                session_id=s_id,
                 state_json=json.dumps(final_state, default=str),
                 status="completed",
                 completed_at=datetime.now(UTC),

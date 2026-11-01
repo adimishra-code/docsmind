@@ -4,11 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Send, StopCircle } from 'lucide-react';
 import { useConversationStore } from '@/store/useConversationStore';
 import { useChatStream } from '../hooks/useChatStream';
+import { useContextStore } from '@/store/useContextStore';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { PanelRightClose, PanelRightOpen } from 'lucide-react';
 
 export function PromptInput() {
   const [prompt, setPrompt] = useState('');
   const { isStreaming, addMessage } = useConversationStore();
   const { streamChat, abortStream } = useChatStream();
+  const { isContextPanelOpen, toggleContextPanel } = useContextStore();
   const formRef = useRef<HTMLFormElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,14 +43,38 @@ export function PromptInput() {
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      className="relative flex w-full items-end gap-2 bg-card border rounded-xl p-2 pl-3.5 shadow-sm focus-within:ring-1 focus-within:ring-ring transition-all duration-150"
+      // One clean surface — the form is the only visible border.
+      // focus-within darkens it slightly; no secondary ring.
+      className="relative flex w-full items-end gap-2 rounded-xl border bg-card px-2.5 py-2 shadow-sm transition-colors duration-150 focus-within:border-foreground/30"
     >
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={toggleContextPanel}
+              className="shrink-0 h-9 w-9 text-muted-foreground hover:text-foreground mb-0.5"
+              aria-label="Toggle context panel"
+            >
+              {isContextPanelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {isContextPanelOpen ? 'Close context panel' : 'Open context panel'}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+
       <TextareaAutosize
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Ask a question..."
-        className="flex-1 max-h-60 min-h-[36px] resize-none bg-transparent py-2.5 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
+        placeholder={isStreaming ? 'Generating…' : 'Ask about your documents…'}
+        // Suppress ALL browser/global focus indicators so the form border is the
+        // sole affordance — prevents the classic "box inside a box" double border.
+        className="flex-1 max-h-60 min-h-[36px] resize-none appearance-none border-0 bg-transparent py-2 text-sm shadow-none outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60 disabled:opacity-50"
         maxRows={8}
         disabled={isStreaming}
       />
@@ -56,7 +84,9 @@ export function PromptInput() {
           type="button"
           onClick={abortStream}
           size="icon"
-          className="shrink-0 h-9 w-9 rounded-lg bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+          title="Stop generation"
+          className="shrink-0 h-9 w-9 rounded-lg bg-destructive hover:bg-destructive/90 text-destructive-foreground focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors duration-150 mb-0.5"
+          aria-label="Stop generation"
         >
           <StopCircle className="h-4 w-4" />
         </Button>
@@ -65,7 +95,9 @@ export function PromptInput() {
           type="submit"
           size="icon"
           disabled={!prompt.trim()}
-          className="shrink-0 h-9 w-9 rounded-lg"
+          title="Send (Enter)"
+          className="shrink-0 h-9 w-9 rounded-lg focus-visible:ring-0 focus-visible:ring-offset-0 transition-opacity duration-150 mb-0.5"
+          aria-label="Send message"
         >
           <Send className="h-4 w-4" />
         </Button>

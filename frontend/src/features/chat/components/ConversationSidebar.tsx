@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/utils';
+import { useContextStore } from '@/store/useContextStore';
 import {
   Plus,
   Search,
@@ -34,6 +35,7 @@ import {
   X,
   Check,
   Loader2,
+  PanelLeftClose,
 } from 'lucide-react';
 import { formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 
@@ -90,8 +92,8 @@ function SessionItem({ session, isActive, onSelect, onRename, onPin, onDelete }:
   return (
     <div
       className={cn(
-        'group relative flex items-center gap-2 rounded-md px-3 py-2 text-sm cursor-pointer transition-colors duration-100',
-        isActive ? 'bg-primary/10 text-primary' : 'hover:bg-accent text-foreground',
+        'group relative flex items-center gap-2 rounded-md px-3 py-2.5 text-sm cursor-pointer transition-colors duration-100 w-full min-w-0',
+        isActive ? 'bg-primary/15 text-primary font-medium' : 'hover:bg-accent text-foreground',
       )}
       onClick={() => !isEditing && onSelect()}
       role="button"
@@ -99,10 +101,10 @@ function SessionItem({ session, isActive, onSelect, onRename, onPin, onDelete }:
       onKeyDown={(e) => e.key === 'Enter' && !isEditing && onSelect()}
       aria-selected={isActive}
     >
-      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      <MessageSquare className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-primary/70" : "text-muted-foreground")} aria-hidden />
 
       {isEditing ? (
-        <div className="flex-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <div className="flex-1 flex items-center gap-1 min-w-0" onClick={(e) => e.stopPropagation()}>
           <Input
             ref={inputRef}
             value={editTitle}
@@ -120,22 +122,29 @@ function SessionItem({ session, isActive, onSelect, onRename, onPin, onDelete }:
         </div>
       ) : (
         <>
-          <span className="flex-1 truncate text-[13px]">{session.title}</span>
-          {session.is_pinned && <Pin className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Pinned" />}
+          <span className="flex-1 truncate text-[13px] min-w-0">{session.title}</span>
+          {session.is_pinned && <Pin className={cn("h-3 w-3 shrink-0", isActive ? "text-primary/70" : "text-muted-foreground")} aria-label="Pinned" />}
           <DropdownMenu>
-            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <DropdownMenuTrigger asChild>
               <button
-                className="shrink-0 opacity-0 group-hover:opacity-100 h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+                className={cn(
+                  "shrink-0 h-6 w-6 flex items-center justify-center rounded transition-opacity",
+                  isActive 
+                    ? "opacity-100 text-primary hover:bg-primary/20" 
+                    : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground hover:bg-accent sm:opacity-0 sm:group-hover:opacity-100 max-sm:opacity-100"
+                )}
                 aria-label="Session options"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
               >
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}>
+              <DropdownMenuItem onSelect={() => setIsEditing(true)}>
                 <Pencil className="mr-2 h-3.5 w-3.5" /> Rename
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onPin(session.id, !session.is_pinned); }}>
+              <DropdownMenuItem onSelect={() => onPin(session.id, !session.is_pinned)}>
                 {session.is_pinned
                   ? <><PinOff className="mr-2 h-3.5 w-3.5" /> Unpin</>
                   : <><Pin className="mr-2 h-3.5 w-3.5" /> Pin</>}
@@ -143,7 +152,7 @@ function SessionItem({ session, isActive, onSelect, onRename, onPin, onDelete }:
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
-                onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
+                onSelect={() => onDelete(session.id)}
               >
                 <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete
               </DropdownMenuItem>
@@ -159,6 +168,7 @@ export function ConversationSidebar({ onSessionChange }: ConversationSidebarProp
   const { id: activeId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toggleConversationPanel = useContextStore((s) => s.toggleConversationPanel);
 
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -246,21 +256,37 @@ export function ConversationSidebar({ onSessionChange }: ConversationSidebarProp
         {/* Header */}
         <div className="flex items-center justify-between h-14 px-3 border-b shrink-0">
           <span className="text-sm font-semibold text-foreground">Conversations</span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleNewChat}
-                disabled={isCreating}
-                className="h-8 w-8"
-                aria-label="New chat"
-              >
-                {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>New chat</TooltipContent>
-          </Tooltip>
+          <div className="flex items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleNewChat}
+                  disabled={isCreating}
+                  className="h-8 w-8"
+                  aria-label="New chat"
+                >
+                  {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>New chat</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleConversationPanel}
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  aria-label="Collapse conversation panel"
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Collapse panel</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
         {/* Search */}

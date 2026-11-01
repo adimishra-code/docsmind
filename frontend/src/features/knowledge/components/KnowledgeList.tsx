@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { RenameDialog, DeleteDocumentDialog } from '@/components/documents/DocumentActionModal';
 import { format } from 'date-fns';
+import { formatBytes } from '@/utils';
 import { MoreHorizontal, Eye, Download, Pencil, Trash2, FileText, MessageSquarePlus, RefreshCw } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { useAddToContext } from '../hooks/useAddToContext';
@@ -116,9 +117,15 @@ export function KnowledgeList() {
                   </Badge>
                 </TableCell>
                 <TableCell className="uppercase text-xs font-mono">{doc.file_type}</TableCell>
-                <TableCell>{(doc.size_bytes / (1024 * 1024)).toFixed(2)} MB</TableCell>
+                <TableCell className="text-muted-foreground text-sm tabular-nums">{formatBytes(doc.file_size)}</TableCell>
                 <TableCell className="text-right text-muted-foreground text-sm">
-                  {format(new Date(doc.created_at), 'MMM d, yyyy')}
+                  {(() => {
+                    try {
+                      return format(new Date(doc.created_at), 'MMM d, yyyy');
+                    } catch {
+                      return '—';
+                    }
+                  })()}
                 </TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>

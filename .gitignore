@@ -19,6 +19,7 @@ coverage/
 .pytest_cache/
 *.db
 backend/storage/
+storage/
 
 # Logs & Temp files
 *.log
@@ -32,3 +33,9 @@ backend/server_output.log
 backend/uvicorn_err.txt
 backend/uvicorn_out.txt
 test_doc.txt
+backend/test_temp.db
+backend/*.db*
+backend/debug.py
+
+# Local temp checkouts / scratch (not part of the app; deps come from node_modules)
+react-resizable-panels-temp/

@@ -21,17 +21,39 @@ export type DocumentStatus =
   | 'ready'
   | 'failed';
 
+/**
+ * Real, server-computed document metadata (backend `MetadataExtractor`, stored
+ * on `Document.doc_metadata` and returned by `DocumentResponse.doc_metadata`).
+ * Every field is optional — the UI only renders what actually exists and never
+ * fabricates. This is NOT LLM-generated: keywords/title/author are heuristic,
+ * language is detected, pages/headings/tables/ocr come from the parser.
+ */
+export interface DocMetadata {
+  title?: string;
+  author?: string;
+  language?: string;
+  keywords?: string[];
+  pages?: number;
+  headings?: string[];
+  tables?: unknown[];
+  ocr_applied?: boolean;
+  upload_date?: string;
+  document_type?: string;
+}
+
 export interface DocumentMetadata {
   id: string;
   filename: string;
   file_type: string;
-  size_bytes: number;
+  /** Size in bytes. Matches the backend `DocumentResponse.file_size` field. */
+  file_size: number;
   status: DocumentStatus;
   created_at: string;
   updated_at: string;
   checksum?: string;
   chunk_count?: number;
   error_message?: string;
+  doc_metadata?: DocMetadata;
 }
 
 /** Terminal success — the document is fully indexed and ready to use. */
@@ -56,11 +78,18 @@ export function documentStatusVariant(status: string): 'default' | 'secondary' |
   return 'secondary';
 }
 
-/** Human-facing label — normalizes the backend's "completed" to "Ready". */
+/**
+ * Human-facing label. Normalizes the backend vocabulary honestly:
+ *   completed/ready → "Ready", failed → "Failed",
+ *   pending/queued → "Queued", uploading → "Uploading",
+ *   processing/parsing/embedding → "Processing".
+ */
 export function documentStatusLabel(status: string): string {
   if (isDocumentReady(status)) return 'Ready';
-  if (isDocumentProcessing(status)) return 'Processing';
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  if (isDocumentFailed(status)) return 'Failed';
+  if (status === 'uploading') return 'Uploading';
+  if (status === 'pending' || status === 'queued') return 'Queued';
+  return 'Processing';
 }
 
 export interface DocumentListResponse {
@@ -69,6 +98,23 @@ export interface DocumentListResponse {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+/** Real, model-generated document insights. `available` is false when the
+ *  document isn't indexed yet or generation didn't succeed — never fabricated. */
+export interface DocumentInsights {
+  available: boolean;
+  summary: string | null;
+  topics: string[];
+  entities: string[];
+}
+
+/** A semantically similar document (embedding similarity, real cosine score). */
+export interface RelatedDocument {
+  document_id: string;
+  filename: string;
+  file_type: string;
+  similarity: number;
 }
 
 export const documentsApi = {
@@ -87,6 +133,16 @@ export const documentsApi = {
     return response.data;
   },
 
+  getInsights: async (id: string): Promise<DocumentInsights> => {
+    const { data } = await api.get<DocumentInsights>(`/api/v1/documents/${id}/insights`);
+    return data;
+  },
+
+  getRelated: async (id: string): Promise<RelatedDocument[]> => {
+    const { data } = await api.get<{ items: RelatedDocument[] }>(`/api/v1/documents/${id}/related`);
+    return data.items;
+  },
+
   reprocess: async (id: string): Promise<DocumentMetadata> => {
     const response = await api.post<DocumentMetadata>(`/api/v1/documents/${id}/reprocess`);
     return response.data;
@@ -96,10 +152,10 @@ export const documentsApi = {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post<DocumentMetadata>('/api/v1/documents/upload', formData, {
+      onUploadProgress,
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      onUploadProgress,
     });
     return response.data;
   },

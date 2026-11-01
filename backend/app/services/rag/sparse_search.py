@@ -31,7 +31,7 @@ class SparseSearcher:
 
         bm25, metadata = await self.index_manager.get_or_build_index(user_id)
 
-        if not metadata:
+        if not metadata or bm25 is None:
             logger.info("No documents found for sparse search scope")
             return []
 

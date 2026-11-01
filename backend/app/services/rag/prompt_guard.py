@@ -92,6 +92,14 @@ class PromptGuard:
     @classmethod
     def build_grounded_system_prompt(cls, chunks: list[dict[str, Any]]) -> str:
         """Build the grounded system prompt from retrieved context blocks."""
+        if not chunks:
+            return (
+                "You are DocsMind AI, an enterprise AI assistant.\n"
+                "No documents or context blocks were found for this query.\n"
+                "Start with '> ℹ️ *No relevant document context found. Answering from general AI knowledge:*' "
+                "and answer using your general knowledge."
+            )
+
         context_blocks = []
         for i, chunk in enumerate(chunks, start=1):
             filename = chunk["payload"].get("filename") or "Unknown File"
@@ -103,12 +111,14 @@ class PromptGuard:
 
         return (
             "You are an enterprise AI document assistant. Your task is to answer user queries truthfully and "
-            "accurately using ONLY the text chunks enclosed in the context block below.\n\n"
+            "accurately, prioritizing the text chunks enclosed in the context block below.\n\n"
             "Guidelines:\n"
-            "1. Ground your answers strictly in the context. Do not extrapolate, hallucinate, or make up facts.\n"
-            "2. If the context does not contain the answer, state: 'I cannot find the answer to this question in the uploaded documents.'\n"
-            "3. Cite every sentence that relies on the context. Append bracketed numbers matching the context block indices (e.g. [1], [2]). "
-            "Place citations directly after the matching sentences, before the ending punctuation.\n\n"
+            "1. Ground your answers in the context whenever relevant.\n"
+            "2. If the context contains the answer, cite every sentence that relies on the context with bracketed numbers matching the context block indices (e.g. [1], [2]). "
+            "Place citations directly after the matching sentences, before the ending punctuation.\n"
+            "3. If the context does NOT contain the answer, explicitly state:\n"
+            "   > ℹ️ *Not found in your uploaded documents. Answering from general AI knowledge:*\n\n"
+            "   and then answer using your general knowledge without citation brackets.\n\n"
             "Context Blocks:\n"
             "--- START CONTEXT ---\n"
             f"{context_string}\n"

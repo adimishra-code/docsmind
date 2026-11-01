@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, computed_field, field_validator
+from pydantic import AliasChoices, Field, PostgresDsn, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["development", "staging", "production"]
@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
 
+    DATABASE_URL: str | None = None
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "docsmind"
@@ -49,6 +50,7 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
 
+    REDIS_URL: str | None = None
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
@@ -59,6 +61,14 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = "mock-key-for-development"
     LLM_BASE_URL: str | None = None
     LLM_MODEL: str = "gpt-4o-mini"
+    # LLM execution path. "openai" (real OpenAI, or any OpenAI-compatible server
+    # when LLM_BASE_URL is set), "ollama" (local server, no key), or "local"
+    # (in-process transformers, no key/network). See services/rag/llm_provider.py.
+    LLM_PROVIDER: str = "openai"
+    # Optional dedicated key for the LLM provider; falls back to OPENAI_API_KEY.
+    LLM_API_KEY: str | None = None
+    # Model used when LLM_PROVIDER=local (HuggingFace text-generation model id).
+    LOCAL_LLM_MODEL: str = "Qwen/Qwen2.5-0.5B-Instruct"
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str | None = None
     QDRANT_STORAGE_PATH: str = "storage/qdrant"
@@ -80,15 +90,23 @@ class Settings(BaseSettings):
     LOGIN_MAX_ATTEMPTS: int = 5
     LOGIN_LOCKOUT_MINUTES: int = 15
 
+    # Comma-separated emails that are granted admin on login (bootstraps the
+    # first administrator; further admins are promoted from the admin panel).
+    ADMIN_EMAILS: str = ""
+
     # ---- SMTP / Email ----
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
-    SMTP_FROM_EMAIL: str = ""
+    SMTP_PASSWORD: str = Field(default="", validation_alias=AliasChoices("SMTP_PASSWORD", "SMTP_PASS"))
+    SMTP_FROM_EMAIL: str = Field(default="", validation_alias=AliasChoices("SMTP_FROM_EMAIL", "SMTP_FROM"))
     SMTP_FROM_NAME: str = "DocsMind"
     SMTP_TLS: bool = True
     EMAILS_ENABLED: bool = True
+    # Google Apps Script Gmail relay (port 443, passwordless Gmail sending)
+    GMAIL_RELAY_URL: str | None = None
+    GMAIL_RELAY_SECRET: str | None = None
+    EMAIL_WEBHOOK_URL: str | None = None
 
     # ---- Google OAuth ----
     GOOGLE_CLIENT_ID: str = ""
@@ -99,7 +117,25 @@ class Settings(BaseSettings):
     @classmethod
     def _split_cors(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):
+            value = value.strip()
+            if value.startswith("[") and value.endswith("]"):
+                import json
+                try:
+                    parsed = json.loads(value)
+                    if isinstance(parsed, list):
+                        return [str(o).strip() for o in parsed if str(o).strip()]
+                except Exception:
+                    pass
             return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    @field_validator("SMTP_FROM_EMAIL", mode="before")
+    @classmethod
+    def _clean_from_email(cls, value: str) -> str:
+        if isinstance(value, str) and "<" in value and ">" in value:
+            import email.utils
+            _, addr = email.utils.parseaddr(value)
+            return addr or value
         return value
 
     @computed_field
@@ -112,9 +148,29 @@ class Settings(BaseSettings):
     def google_oauth_enabled(self) -> bool:
         return bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET)
 
+    @property
+    def admin_emails(self) -> set[str]:
+        """Lowercased set of bootstrap admin emails from ADMIN_EMAILS."""
+        return {e.strip().lower() for e in self.ADMIN_EMAILS.split(",") if e.strip()}
+
     @computed_field
     @property
     def database_url(self) -> str:
+        if self.DATABASE_URL:
+            import urllib.parse
+            parsed = urllib.parse.urlsplit(self.DATABASE_URL)
+            q_dict = urllib.parse.parse_qs(parsed.query)
+            q_dict.pop("channel_binding", None)
+            if "sslmode" in q_dict:
+                q_dict["ssl"] = q_dict.pop("sslmode")
+            new_query = urllib.parse.urlencode(q_dict, doseq=True)
+            return urllib.parse.urlunsplit((
+                "postgresql+asyncpg",
+                parsed.netloc,
+                parsed.path,
+                new_query,
+                parsed.fragment,
+            ))
         return str(
             PostgresDsn.build(
                 scheme="postgresql+asyncpg",
@@ -129,6 +185,16 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def sync_database_url(self) -> str:
+        if self.DATABASE_URL:
+            import urllib.parse
+            parsed = urllib.parse.urlsplit(self.DATABASE_URL)
+            return urllib.parse.urlunsplit((
+                "postgresql+psycopg",
+                parsed.netloc,
+                parsed.path,
+                parsed.query,
+                parsed.fragment,
+            ))
         return str(
             PostgresDsn.build(
                 scheme="postgresql+psycopg",
@@ -143,6 +209,8 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def redis_url(self) -> str:
+        if self.REDIS_URL:
+            return self.REDIS_URL
         return "redis://{0}:{1}/{2}".format(self.REDIS_HOST, self.REDIS_PORT, self.REDIS_DB)
 
     def production_safety_errors(self) -> list[str]:
@@ -164,6 +232,18 @@ class Settings(BaseSettings):
             errors.append(
                 "OPENAI_API_KEY is unset or still the development placeholder while "
                 "EMBEDDING_PROVIDER=openai; chat and embeddings will fail at runtime."
+            )
+        # LLM path: only real hosted OpenAI (provider=openai, no LLM_BASE_URL)
+        # needs a key. 'ollama'/'local' or a custom base_url run keyless.
+        llm_key = self.LLM_API_KEY or self.OPENAI_API_KEY
+        if (
+            (self.LLM_PROVIDER == "openai" and self.LLM_BASE_URL is None)
+            or self.LLM_PROVIDER == "openrouter"
+        ) and (not llm_key or llm_key == INSECURE_OPENAI_KEY):
+            errors.append(
+                f"LLM_PROVIDER={self.LLM_PROVIDER} requires a valid API key. "
+                "Provide OPENAI_API_KEY or LLM_API_KEY, or set LLM_PROVIDER=ollama / "
+                "LLM_PROVIDER=local to run keyless."
             )
         if self.POSTGRES_PASSWORD == INSECURE_POSTGRES_PASSWORD:
             errors.append(

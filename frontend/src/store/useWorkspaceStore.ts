@@ -55,7 +55,7 @@ export function sortDocuments(
     if (key === 'name') {
       cmp = a.filename.localeCompare(b.filename, undefined, { sensitivity: 'base' });
     } else if (key === 'size') {
-      cmp = a.size_bytes - b.size_bytes;
+      cmp = (a.file_size ?? 0) - (b.file_size ?? 0);
     } else {
       cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
     }

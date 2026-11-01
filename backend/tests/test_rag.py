@@ -16,6 +16,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.chat import ChatMessage, ChatSession
 from app.models.document import Document, DocumentChunk
 from app.models.usage import UsageLog
+from app.services.rag.chat import ChatService
 from app.services.rag.citations import CitationEngine
 from app.services.rag.embeddings import LocalEmbeddingProvider, OpenAIEmbeddingProvider
 from app.services.rag.evaluator import RAGEvaluator
@@ -397,3 +398,190 @@ async def test_streaming_chat_e2e_completions(
 
     # Restore original async generator
     _ChatOpenAI._astream = _original_astream
+
+
+# --------------------------------------------------------------------------- #
+# Cache-Hit Persistence Regression Tests
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+@patch("app.services.rag.chat.ChatService._check_cache", new_callable=AsyncMock)
+async def test_cache_hit_persists_user_and_assistant_messages(
+    mock_check_cache: AsyncMock,
+    client: AsyncClient,
+) -> None:
+    """Regression: cache-hit path must persist both user and assistant messages
+    so the conversation survives a page reload.  This was the core bug where
+    stream_chat_response returned early without any DB writes on a cache hit."""
+
+    # Force every _check_cache call to return a pre-built cached payload.
+    cached_payload: dict = {
+        "final_response": "Caching stores frequently accessed data for speed.",
+        "citations": [
+            {
+                "document_name": "cache_guide.pdf",
+                "document_id": None,
+                "page_number": 2,
+                "supporting_excerpt": "Frequently accessed data",
+                "confidence_score": 0.91,
+            }
+        ],
+        "confidence": 0.91,
+        "chunk_count": 3,
+        "token_count": 22,
+    }
+    mock_check_cache.return_value = cached_payload
+
+    # Auth
+    await client.post(
+        "/auth/register",
+        json={"email": "cachetest@example.com", "password": "pass123456"},
+    )
+    login = await client.post(
+        "/auth/login",
+        json={"email": "cachetest@example.com", "password": "pass123456"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    # Create a fresh session
+    sess = await client.post(
+        "/chat/sessions",
+        json={"title": "Cache Persistence Test"},
+        headers=headers,
+    )
+    assert sess.status_code == 201
+    session_id = sess.json()["id"]
+
+    # Send the message — _check_cache is mocked → cache-hit path is executed
+    response = await client.post(
+        f"/chat/sessions/{session_id}/messages",
+        json={"content": "What is caching?"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers["content-type"]
+
+    # Parse SSE stream and verify all expected events are present
+    content_parts: list[str] = []
+    received_citations: list[dict] = []
+    received_stats: dict = {}
+    seen_done = False
+
+    for chunk in response.text.split("\n\n"):
+        chunk = chunk.strip()
+        if not chunk.startswith("data: "):
+            continue
+        raw = chunk[6:].strip()
+        if raw == "[DONE]":
+            seen_done = True
+            continue
+        event = json.loads(raw)
+        if event["type"] == "content":
+            content_parts.append(event["content"])
+        elif event["type"] == "citations":
+            received_citations = event["citations"]
+        elif event["type"] == "stats":
+            received_stats = event
+
+    assert seen_done, "Stream did not terminate with [DONE]"
+    full_text = "".join(content_parts)
+    assert "Caching stores" in full_text
+    assert len(received_citations) == 1
+    assert received_citations[0]["document_name"] == "cache_guide.pdf"
+    assert received_stats.get("cached") is True
+    assert received_stats.get("confidence") == pytest.approx(0.91)
+    assert received_stats.get("chunk_count") == 3
+
+    # Both messages must now be in the database
+    async with AsyncSessionLocal() as db:
+        stmt = select(ChatMessage).where(ChatMessage.chat_id == uuid.UUID(session_id))
+        result = await db.execute(stmt)
+        msgs = list(result.scalars().all())
+
+    assert len(msgs) == 2, (
+        f"Expected 2 persisted messages (user + assistant) after cache hit, got {len(msgs)}"
+    )
+
+    user_msg = next(m for m in msgs if m.role == "user")
+    asst_msg = next(m for m in msgs if m.role == "assistant")
+
+    # User message
+    assert user_msg.content == "What is caching?"
+
+    # Assistant message content
+    assert "Caching stores" in asst_msg.content
+
+    # Citations must be persisted
+    assert asst_msg.citations is not None
+    assert len(asst_msg.citations) == 1
+    assert asst_msg.citations[0]["document_name"] == "cache_guide.pdf"
+
+    # Metadata must be fully persisted
+    meta = asst_msg.meta
+    assert meta is not None
+    assert meta.get("cached") is True
+    assert meta.get("confidence") == pytest.approx(0.91)
+    assert meta.get("chunkCount") == 3
+    assert meta.get("tokenCount") is not None
+    assert meta.get("totalMs") is not None
+    assert meta.get("latencyMs") is not None
+    assert meta.get("model") is not None
+    assert meta.get("provider") is not None
+
+    # Simulated reload: session detail must return both messages
+    detail = await client.get(f"/chat/sessions/{session_id}", headers=headers)
+    assert detail.status_code == 200
+    detail_msgs = detail.json()["messages"]
+    assert len(detail_msgs) == 2, (
+        f"Session detail returned {len(detail_msgs)} messages after cache hit; expected 2"
+    )
+    assert detail_msgs[0]["role"] == "user"
+    assert detail_msgs[1]["role"] == "assistant"
+    # Metadata intact on reload
+    assert detail_msgs[1]["meta"]["cached"] is True
+    assert detail_msgs[1]["meta"]["chunkCount"] == 3
+    # Citations intact on reload
+    assert detail_msgs[1]["citations"] is not None
+    assert len(detail_msgs[1]["citations"]) == 1
+    assert detail_msgs[1]["citations"][0]["document_name"] == "cache_guide.pdf"
+
+
+@pytest.mark.asyncio
+@patch("app.services.rag.chat.ChatService._check_cache", new_callable=AsyncMock)
+async def test_cache_hit_derives_session_title(
+    mock_check_cache: AsyncMock,
+    client: AsyncClient,
+) -> None:
+    """Title derivation must run even when the answer comes from cache."""
+    mock_check_cache.return_value = {
+        "final_response": "Answer from cache.",
+        "citations": [],
+        "confidence": 0.8,
+        "chunk_count": 0,
+        "token_count": 10,
+    }
+
+    await client.post(
+        "/auth/register",
+        json={"email": "titlecache@example.com", "password": "pass123456"},
+    )
+    login = await client.post(
+        "/auth/login",
+        json={"email": "titlecache@example.com", "password": "pass123456"},
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    # Session starts with the default "New Chat" placeholder title
+    sess = await client.post("/chat/sessions", json={"title": "New Chat"}, headers=headers)
+    session_id = sess.json()["id"]
+
+    await client.post(
+        f"/chat/sessions/{session_id}/messages",
+        json={"content": "Tell me about machine learning"},
+        headers=headers,
+    )
+
+    # Title should now be derived from the first user message
+    detail = await client.get(f"/chat/sessions/{session_id}", headers=headers)
+    title = detail.json()["title"]
+    assert title.lower() != "new chat", f"Title was not updated from default; got: {title!r}"
+    assert "machine learning" in title.lower() or "Machine Learning" in title

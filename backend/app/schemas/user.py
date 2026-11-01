@@ -79,3 +79,26 @@ class PasswordResetConfirmRequest(BaseModel):
 
 class ProfileUpdateRequest(BaseModel):
     full_name: str | None = Field(default=None, max_length=255)
+
+
+# ---- Admin ----
+
+class AdminUserListResponse(BaseModel):
+    items: list[UserResponse]
+    total: int
+    page: int = 1
+    page_size: int = 50
+    total_pages: int = 1
+
+
+class AdminRoleRequest(BaseModel):
+    """Promote/demote a user identified by email (as typed in the admin UI)."""
+    email: EmailStr
+
+
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    total_admins: int
+    active_users: int
+    total_documents: int
+    total_chats: int

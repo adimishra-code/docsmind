@@ -67,6 +67,11 @@ export const authApi = {
     return data;
   },
 
+  verifyEmail: async (token: string): Promise<MessageResponse> => {
+    const { data } = await api.get<MessageResponse>('/api/v1/auth/verify-email', { params: { token } });
+    return data;
+  },
+
   forgotPassword: async (email: string): Promise<MessageResponse> => {
     const { data } = await api.post<MessageResponse>('/api/v1/auth/forgot-password', { email });
     return data;

@@ -32,42 +32,56 @@ class AuthService:
         self.redis = redis
 
     async def _check_login_attempts(self, email: str) -> None:
-        cache_key = "login_attempts:{0}".format(email)
-        attempts = await self.redis.get(cache_key)
-        
-        if attempts and int(attempts) >= settings.LOGIN_MAX_ATTEMPTS:
-            lockout_key = "login_lockout:{0}".format(email)
-            lockout_until = await self.redis.get(lockout_key)
+        try:
+            cache_key = "login_attempts:{0}".format(email)
+            attempts = await self.redis.get(cache_key)
             
-            if lockout_until:
-                lockout_time = int(lockout_until)
-                remaining = lockout_time - int(datetime.now(UTC).timestamp())
-                if remaining > 0:
-                    raise AuthenticationError(
-                        "Too many login attempts. Try again in {0} minutes.".format(remaining // 60),
-                        code="account_locked",
-                    )
-                else:
-                    await self.redis.delete(cache_key)
-                    await self.redis.delete(lockout_key)
+            if attempts and int(attempts) >= settings.LOGIN_MAX_ATTEMPTS:
+                lockout_key = "login_lockout:{0}".format(email)
+                lockout_until = await self.redis.get(lockout_key)
+                
+                if lockout_until:
+                    lockout_time = int(lockout_until)
+                    remaining = lockout_time - int(datetime.now(UTC).timestamp())
+                    if remaining > 0:
+                        raise AuthenticationError(
+                            "Too many login attempts. Try again in {0} minutes.".format(remaining // 60),
+                            code="account_locked",
+                        )
+                    else:
+                        await self.redis.delete(cache_key)
+                        await self.redis.delete(lockout_key)
+        except AuthenticationError:
+            raise
+        except Exception:
+            if settings.is_production:
+                raise
     
     async def _record_failed_login(self, email: str) -> None:
-        cache_key = "login_attempts:{0}".format(email)
-        lockout_key = "login_lockout:{0}".format(email)
-        
-        attempts = await self.redis.incr(cache_key)
-        await self.redis.expire(cache_key, 86400)
-        
-        if attempts >= settings.LOGIN_MAX_ATTEMPTS:
-            lockout_duration = settings.LOGIN_LOCKOUT_MINUTES * 60
-            await self.redis.setex(lockout_key, lockout_duration, str(int(datetime.now(UTC).timestamp()) + lockout_duration))
-            await self.redis.delete(cache_key)
+        try:
+            cache_key = "login_attempts:{0}".format(email)
+            lockout_key = "login_lockout:{0}".format(email)
+            
+            attempts = await self.redis.incr(cache_key)
+            await self.redis.expire(cache_key, 86400)
+            
+            if attempts >= settings.LOGIN_MAX_ATTEMPTS:
+                lockout_duration = settings.LOGIN_LOCKOUT_MINUTES * 60
+                await self.redis.setex(lockout_key, lockout_duration, str(int(datetime.now(UTC).timestamp()) + lockout_duration))
+                await self.redis.delete(cache_key)
+        except Exception:
+            if settings.is_production:
+                raise
 
     async def _clear_failed_logins(self, email: str) -> None:
-        cache_key = "login_attempts:{0}".format(email)
-        lockout_key = "login_lockout:{0}".format(email)
-        await self.redis.delete(cache_key)
-        await self.redis.delete(lockout_key)
+        try:
+            cache_key = "login_attempts:{0}".format(email)
+            lockout_key = "login_lockout:{0}".format(email)
+            await self.redis.delete(cache_key)
+            await self.redis.delete(lockout_key)
+        except Exception:
+            if settings.is_production:
+                raise
 
     async def _log_audit(
         self,

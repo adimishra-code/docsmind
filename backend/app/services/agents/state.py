@@ -9,10 +9,17 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
     session_id: str
     user_id: str
-    
+
+    # Routing: "greeting" (small talk, skip retrieval) or "question" (full RAG).
+    intent: str
+
     # Execution Plan
     plan: str
-    
+    # Independent sub-questions a multi-part prompt was decomposed into. Empty or
+    # single-element for a simple question; drives per-task retrieval + the
+    # headed, structured answer.
+    sub_questions: list[str]
+
     # Retrieval
     document_ids: list[str]
     retrieved_chunks: list[dict]

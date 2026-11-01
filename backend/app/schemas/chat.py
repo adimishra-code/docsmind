@@ -52,6 +52,7 @@ class ChatMessageResponse(BaseModel):
     role: str
     content: str
     citations: list[dict[str, Any]] | None = None
+    meta: dict[str, Any] | None = None
     created_at: datetime
 
     class Config:

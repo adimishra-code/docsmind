@@ -1,12 +1,27 @@
 import { api, refreshAccessToken } from './api';
 import { useAuthStore } from '@/store/useAuthStore';
 
+/** Real, per-response grounding metadata. Every field is optional — the UI
+ *  only renders what the backend/stream actually provided (never fabricated). */
+export interface MessageMeta {
+  model?: string;
+  provider?: string;
+  confidence?: number;   // 0..1, from the verifier node
+  chunkCount?: number;   // retrieved chunks considered
+  tokenCount?: number;   // prompt + completion tokens
+  ttftMs?: number;       // time to first streamed token (client-measured)
+  totalMs?: number;      // total wall-clock time (client-measured during stream; server-measured on reload)
+  latencyMs?: number;    // server-measured backend processing time (persisted in DB meta)
+  cached?: boolean;      // served from the RAG cache
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   created_at: string;
   citations?: any[];
+  meta?: MessageMeta;
 }
 
 export interface ChatSession {
@@ -82,7 +97,9 @@ export const chatApi = {
         response = await doFetch(newToken);
       } catch {
         useAuthStore.getState().clearAuth();
-        window.location.href = '/login';
+        if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register') && !window.location.pathname.startsWith('/forgot-password')) {
+          window.location.href = '/login';
+        }
         return response;
       }
     }

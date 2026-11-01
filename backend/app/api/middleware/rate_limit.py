@@ -1,4 +1,4 @@
-﻿"""Atomic Redis rate limiting middleware."""
+"""Atomic Redis rate limiting middleware."""
 from __future__ import annotations
 
 from fastapi import Request, Response
@@ -33,12 +33,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         is_auth_endpoint = request.url.path.startswith("/api/v1/auth")
 
         try:
-            pipe = redis_client.pipeline()
-            pipe.incr(cache_key)
-            pipe.expire(cache_key, self.window_seconds)
-            results = await pipe.execute()
-            
-            current_count = results[0]
+            current_count = await redis_client.incr(cache_key)
+            if current_count == 1:
+                await redis_client.expire(cache_key, self.window_seconds)
             
             if current_count > self.max_requests:
                 logger.warning("Rate limit exceeded", client_ip=client_ip, count=current_count, limit=self.max_requests)
@@ -52,19 +49,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 logger.warning("Redis unavailable (event loop closed) — bypassing rate limiter", client_ip=client_ip)
             else:
                 logger.error("Redis rate limit check failed", client_ip=client_ip, error=str(exc))
-                if is_auth_endpoint or not self.fail_open:
+                if settings.is_production and (is_auth_endpoint or not self.fail_open):
                     return JSONResponse(
                         status_code=503,
                         content={"error": "Service temporarily unavailable", "code": "rate_limit_service_unavailable"},
                     )
         except Exception as exc:
             logger.error("Redis rate limit check failed", client_ip=client_ip, error=str(exc))
-            if is_auth_endpoint or not self.fail_open:
-                logger.error("Failing closed due to Redis unavailability for auth endpoint")
+            if settings.is_production and (is_auth_endpoint or not self.fail_open):
+                logger.error("Failing closed due to Redis unavailability for auth endpoint in production")
                 return JSONResponse(
                     status_code=503,
                     content={"error": "Service temporarily unavailable", "code": "rate_limit_service_unavailable"},
                 )
-            logger.warning("Failing open for non-auth endpoint due to Redis error")
+            logger.warning("Failing open for request due to Redis error in non-production", client_ip=client_ip)
 
         return await call_next(request)

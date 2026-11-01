@@ -59,12 +59,18 @@ class QdrantAdapter(VectorStoreInterface):
     """Qdrant implementation of VectorStoreInterface using AsyncQdrantClient."""
 
     _shared_client: AsyncQdrantClient | None = None
+    _shared_is_local: bool = False
 
     def __init__(self) -> None:
+        if QdrantAdapter._shared_client is not None:
+            self.client = QdrantAdapter._shared_client
+            self._using_local = QdrantAdapter._shared_is_local
+            return
+
         if os.getenv("PYTEST_CURRENT_TEST"):
-            if QdrantAdapter._shared_client is None:
-                logger.info("Initializing SHARED in-memory Async Qdrant client for testing")
-                QdrantAdapter._shared_client = AsyncQdrantClient(":memory:")
+            logger.info("Initializing SHARED in-memory Async Qdrant client for testing")
+            QdrantAdapter._shared_client = AsyncQdrantClient(":memory:")
+            QdrantAdapter._shared_is_local = False
             self.client = QdrantAdapter._shared_client
             return
 
@@ -75,6 +81,8 @@ class QdrantAdapter(VectorStoreInterface):
                     api_key=settings.QDRANT_API_KEY,
                 )
                 logger.info("Initializing remote Async Qdrant client", url=settings.QDRANT_URL)
+                QdrantAdapter._shared_client = client
+                QdrantAdapter._shared_is_local = False
                 self.client = client
                 return
             except Exception:
@@ -83,13 +91,41 @@ class QdrantAdapter(VectorStoreInterface):
 
         os.makedirs(settings.QDRANT_STORAGE_PATH, exist_ok=True)
         logger.info("Initializing local disk Async Qdrant client", path=settings.QDRANT_STORAGE_PATH)
-        self.client = AsyncQdrantClient(path=settings.QDRANT_STORAGE_PATH)
+        QdrantAdapter._shared_client = AsyncQdrantClient(path=settings.QDRANT_STORAGE_PATH)
+        QdrantAdapter._shared_is_local = True
+        self.client = QdrantAdapter._shared_client
+        self._using_local = True
+
+    async def _fallback_to_local_if_needed(self, exc: Exception) -> bool:
+        """If remote Qdrant failed in development, switch to embedded local disk."""
+        if not getattr(self, "_using_local", False) and not settings.is_production:
+            logger.warning(
+                "Remote Qdrant connection failed, failing over to embedded local disk Qdrant",
+                error=str(exc),
+                path=settings.QDRANT_STORAGE_PATH,
+            )
+            os.makedirs(settings.QDRANT_STORAGE_PATH, exist_ok=True)
+            if not getattr(QdrantAdapter, "_shared_is_local", False) or QdrantAdapter._shared_client is None:
+                QdrantAdapter._shared_client = AsyncQdrantClient(path=settings.QDRANT_STORAGE_PATH)
+                QdrantAdapter._shared_is_local = True
+            self.client = QdrantAdapter._shared_client
+            self._using_local = True
+            return True
+        return False
 
     async def create_collection_if_not_exists(
         self, collection_name: str, vector_size: int
     ) -> None:
         try:
             collections = await self.client.get_collections()
+        except Exception as exc:
+            if await self._fallback_to_local_if_needed(exc):
+                collections = await self.client.get_collections()
+            else:
+                logger.exception("Failed to initialize vector collection", name=collection_name)
+                raise exc
+
+        try:
             exists = any(c.name == collection_name for c in collections.collections)
             if not exists:
                 logger.info("Creating vector collection", name=collection_name, size=vector_size)
@@ -114,9 +150,14 @@ class QdrantAdapter(VectorStoreInterface):
         points = []
         for chunk, embedding in zip(chunks, embeddings, strict=True):
             point_id = str(chunk.id)
+            # chunk_metadata may be None when created without explicit metadata
+            # (e.g. in tests or when the ingestion pipeline omits it).
+            meta = chunk.chunk_metadata or {}
             payload = {
                 "user_id": str(user_id),
                 "document_id": str(chunk.document_id),
+                "filename": meta.get("filename", "Unknown"),
+                "section": meta.get("section", ""),
                 "chunk_index": chunk.chunk_index,
                 "page_number": chunk.page_number,
                 "content": chunk.content,
@@ -127,8 +168,13 @@ class QdrantAdapter(VectorStoreInterface):
             await self.client.upsert(collection_name=collection_name, points=points)
             logger.info("Upserted points to vector database", count=len(points), name=collection_name)
         except Exception as exc:
-            logger.exception("Qdrant upsert failed", name=collection_name)
-            raise exc
+            if await self._fallback_to_local_if_needed(exc):
+                await self.create_collection_if_not_exists(collection_name, len(embeddings[0]) if embeddings else 1536)
+                await self.client.upsert(collection_name=collection_name, points=points)
+                logger.info("Upserted points to local vector database after failover", count=len(points), name=collection_name)
+            else:
+                logger.exception("Qdrant upsert failed", name=collection_name)
+                raise exc
 
     async def search_chunks(
         self,
@@ -164,18 +210,27 @@ class QdrantAdapter(VectorStoreInterface):
                 limit=limit,
                 with_payload=True,
             )
-            
-            return [
-                {
-                    "chunk_id": uuid.UUID(r.id) if isinstance(r.id, str) else r.id,
-                    "score": r.score,
-                    "payload": r.payload or {},
-                }
-                for r in response.points
-            ]
         except Exception as exc:
-            logger.exception("Qdrant query execution failed", name=collection_name)
-            raise exc
+            if await self._fallback_to_local_if_needed(exc):
+                response = await self.client.query_points(
+                    collection_name=collection_name,
+                    query=query_vector,
+                    query_filter=query_filter,
+                    limit=limit,
+                    with_payload=True,
+                )
+            else:
+                logger.exception("Qdrant query execution failed", name=collection_name)
+                raise exc
+            
+        return [
+            {
+                "chunk_id": uuid.UUID(r.id) if isinstance(r.id, str) else r.id,
+                "score": r.score,
+                "payload": r.payload or {},
+            }
+            for r in response.points
+        ]
 
     async def delete_by_document(
         self, collection_name: str, document_id: uuid.UUID, user_id: uuid.UUID
@@ -190,5 +245,9 @@ class QdrantAdapter(VectorStoreInterface):
             await self.client.delete(collection_name=collection_name, points_selector=query_filter)
             logger.info("Deleted vector points for document", document_id=document_id)
         except Exception as exc:
-            logger.exception("Qdrant delete by document failed", document_id=document_id)
-            raise exc
+            if await self._fallback_to_local_if_needed(exc):
+                await self.client.delete(collection_name=collection_name, points_selector=query_filter)
+                logger.info("Deleted vector points for document on local disk", document_id=document_id)
+            else:
+                logger.exception("Qdrant delete by document failed", document_id=document_id)
+                raise exc

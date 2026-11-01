@@ -18,10 +18,11 @@ export function Workspace() {
   const { viewMode, selectedDocumentIds, clearSelection } = useWorkspaceStore();
   const addTask = useTaskStore((state) => state.addTask);
   const updateTask = useTaskStore((state) => state.updateTask);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isUploadMode = searchParams.get('upload') === 'true';
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTriggeredRef = useRef(false);
   const queryClient = useQueryClient();
 
   const [isDeleting, setIsDeleting] = useState(false);
@@ -57,15 +58,28 @@ export function Workspace() {
     noKeyboard: true,
   });
 
-  // Handle ?upload=true query parameter to trigger dialog
+  // Open the OS file picker exactly once when arriving via the "Upload" quick
+  // action (?upload=true). We clear the param through the router — not
+  // window.history — so react-router's own state stays in sync; using
+  // replaceState here left `upload=true` live in the router and re-opened the
+  // picker on every re-render. The ref guard makes it idempotent even if the
+  // param clear and the effect race.
   useEffect(() => {
-    if (isUploadMode && fileInputRef.current) {
-      fileInputRef.current.click();
-      // Remove query parameter so it doesn't trigger again on reload
-      const newUrl = window.location.pathname;
-      window.history.replaceState(null, '', newUrl);
+    if (!isUploadMode) {
+      uploadTriggeredRef.current = false;
+      return;
     }
-  }, [isUploadMode]);
+    if (uploadTriggeredRef.current) return;
+    uploadTriggeredRef.current = true;
+    fileInputRef.current?.click();
+    setSearchParams(
+      (prev) => {
+        prev.delete('upload');
+        return prev;
+      },
+      { replace: true },
+    );
+  }, [isUploadMode, setSearchParams]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {

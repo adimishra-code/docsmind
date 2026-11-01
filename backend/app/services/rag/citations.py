@@ -46,30 +46,28 @@ class CitationEngine:
         # 2. Extract unique citation index markers [N]
         raw_tags = re.findall(r"\[(\d+)\]", text)
         
-        # Deduplicate tags to prevent duplicate citation exports while maintaining order
-        referenced_indices = []
-        for tag in raw_tags:
-            idx = int(tag)
-            if idx not in referenced_indices:
-                referenced_indices.append(idx)
+        # Deduplicate and sort tags so citations are cleanly ordered
+        referenced_indices = sorted({int(tag) for tag in raw_tags if tag.isdigit()})
 
         # 3. Construct unified citation profiles
         citations = []
-        for citation_no, idx in enumerate(referenced_indices, start=1):
+        for idx in referenced_indices:
             if 1 <= idx <= len(retrieved_chunks):
                 chunk = retrieved_chunks[idx - 1]
                 
                 # Retrieve original excerpt (pre parent-context expansion if applicable)
                 excerpt = chunk["payload"].get("original_content") or chunk["payload"]["content"]
+                clean_excerpt = re.sub(r"^\[Document:[^\]]+\]\s*", "", excerpt).strip()
                 
                 citations.append({
-                    "citation_index": citation_no,
+                    "citation_index": idx,
+                    "index": idx,
                     "document_name": chunk["payload"]["filename"],
                     "document_id": chunk["payload"]["document_id"],
                     "page_number": chunk["payload"]["page_number"],
                     "chunk_id": str(chunk["chunk_id"]),
                     "confidence_score": round(chunk.get("rerank_score") or chunk["score"], 4),
-                    "supporting_excerpt": excerpt.strip(),
+                    "supporting_excerpt": clean_excerpt,
                 })
 
         return text, citations

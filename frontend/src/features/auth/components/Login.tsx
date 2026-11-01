@@ -32,6 +32,8 @@ export function Login() {
       setError('Google sign-in was cancelled. Please try again.');
     } else if (oauthError === 'google_oauth_failed') {
       setError('Google sign-in failed. Please try again or use email/password.');
+    } else if (oauthError === 'google_oauth_not_configured' || oauthError === 'oauth_not_configured') {
+      setError('Google Sign-In is not configured on this server. Please use email and password.');
     } else if (oauthError === 'invalid_token') {
       setError('Verification link is invalid or expired. Please request a new one.');
     }
@@ -46,13 +48,14 @@ export function Login() {
 
     try {
       const tokens = await authApi.login({ email, password });
+      useAuthStore.getState().setAccessToken(tokens.access_token);
       const user = await authApi.getMe();
       setAuth(tokens.access_token, tokens.refresh_token, user);
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
       const errorData = err?.response?.data;
       const code = errorData?.code;
-      const message = errorData?.error || 'Login failed. Please try again.';
+      const message = errorData?.error || errorData?.detail || 'Login failed. Please try again.';
 
       if (code === 'email_not_verified') {
         setUnverifiedEmail(email);

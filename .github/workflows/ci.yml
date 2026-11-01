@@ -76,7 +76,7 @@ jobs:
       run: npx tsc --noEmit
 
     - name: Run vitest
-      run: npx vitest run --reporter=verbose
+      run: npm test
 
     - name: Build Test
       run: npm run build

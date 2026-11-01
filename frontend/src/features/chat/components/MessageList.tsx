@@ -5,43 +5,67 @@ import { AgentTimeline } from './AgentTimeline';
 import { useChatStream } from '../hooks/useChatStream';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Sparkles, AlertTriangle, RefreshCw, Bot, Loader2 } from 'lucide-react';
+import { Sparkles, AlertTriangle, RefreshCw, Bot } from 'lucide-react';
 
 export function MessageList() {
-  const { messages, isStreaming, streamingContent, streamError, agentStates } = useConversationStore();
+  const { messages, isStreaming, streamingContent, streamingCitations, streamError, agentStates, streamMeta, streamStartedAt } =
+    useConversationStore();
   const { retry, regenerate } = useChatStream();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new messages, stream chunks, reasoning steps, or errors
+  // Helper to synchronously check if the user is near the bottom.
+  // This prevents fighting the user if they scroll up to read earlier messages during a stream.
+  const isNearBottom = () => {
+    const vp = bottomRef.current?.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
+    if (!vp) return true; // Default to true if not found
+    // 100px threshold
+    return Math.abs(vp.scrollHeight - vp.scrollTop - vp.clientHeight) < 100;
+  };
+
+  // During streaming: set scrollTop directly (instant) on every token so we
+  // never queue up multiple queued smooth-scroll animations that fight each
+  // other and yank the view. Also fires on agent-state ticks and
+  // isStreaming toggle so the thinking indicator scrolls into view.
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
-    }
-  }, [messages, streamingContent, streamError, agentStates]);
+    if (!isNearBottom()) return;
+    const vp = bottomRef.current?.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
+    if (vp) vp.scrollTop = vp.scrollHeight;
+  }, [streamingContent, agentStates.length, isStreaming]);
 
+  // After a message is committed (or an error appears): one smooth scroll.
+  // Runs only when the count changes — not on every token — so it never
+  // interrupts someone who has already scrolled up to read earlier messages.
+  useEffect(() => {
+    if (!isNearBottom()) return;
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length, streamError]);
+
+  // Empty conversation: guided prompt to help the user get started.
   if (messages.length === 0 && !streamingContent && !streamError && !isStreaming) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-        <Sparkles className="h-12 w-12 text-primary/50" />
-        <h2 className="text-2xl font-semibold">How can I help you today?</h2>
-        <p className="text-muted-foreground max-w-sm">
-          Pin documents from your knowledge workspace to the Context Manager to get highly accurate answers based on your private data.
-        </p>
+      <div className="flex flex-col items-center justify-center h-full text-center space-y-3 px-8">
+        <div className="h-12 w-12 rounded-2xl bg-primary/8 flex items-center justify-center">
+          <Sparkles className="h-6 w-6 text-primary/70" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold tracking-tight">Ask anything</h2>
+          <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
+            Pin documents in the Context panel to ground answers in your own files.
+          </p>
+        </div>
       </div>
     );
   }
 
   const lastMessage = messages[messages.length - 1];
   const canRegenerate = !isStreaming && !streamError && lastMessage?.role === 'assistant';
-  // Before the answer text starts streaming, show a live reasoning trace.
+  // Before any tokens arrive, show the live reasoning trace.
   const showThinking = isStreaming && !streamingContent;
 
   return (
-    <ScrollArea className="h-full" ref={scrollRef}>
-      <div className="flex flex-col pb-8">
+    <ScrollArea className="h-full">
+      <div className="flex flex-col pb-6">
         {messages.map((msg, i) => (
           <MessageBubble
             key={msg.id}
@@ -50,45 +74,63 @@ export function MessageList() {
           />
         ))}
 
+        {/* Thinking / reasoning indicator — shown before the first token */}
         {showThinking && (
-          <div className="flex w-full py-6 bg-muted/30">
-            <div className="max-w-4xl mx-auto w-full flex gap-4 px-4">
-              <div className="flex-shrink-0 mt-1">
-                <div className="h-8 w-8 rounded-md bg-secondary border flex items-center justify-center text-secondary-foreground">
-                  <Bot className="h-5 w-5" />
+          <div className="flex w-full py-5 bg-muted/40">
+            <div className="max-w-3xl mx-auto w-full flex gap-4 px-4">
+              <div className="flex-shrink-0 mt-0.5">
+                <div className="h-7 w-7 rounded-md bg-secondary border border-border flex items-center justify-center text-secondary-foreground">
+                  <Bot className="h-4 w-4" />
                 </div>
               </div>
-              <div className="flex-1 min-w-0">
-                {agentStates.length > 0 && <AgentTimeline states={agentStates} />}
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>{agentStates.length ? 'Composing answer…' : 'Thinking…'}</span>
-                </div>
+              <div className="flex-1 min-w-0 pt-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-2 select-none">
+                  DocsMind
+                </p>
+                <AgentTimeline
+                  states={agentStates}
+                  streaming={false}
+                  provider={streamMeta?.provider}
+                  startedAt={streamStartedAt}
+                />
               </div>
             </div>
           </div>
         )}
 
+        {/* Live streaming bubble — appears once the first token arrives */}
         {isStreaming && streamingContent && (
           <MessageBubble
-            message={{ id: 'streaming', role: 'assistant', content: streamingContent, created_at: new Date().toISOString() }}
-            isStreaming={true}
+            message={{
+              id: 'streaming',
+              role: 'assistant',
+              content: streamingContent,
+              created_at: new Date().toISOString(),
+              citations: streamingCitations?.length ? (streamingCitations as any[]) : undefined,
+            }}
+            isStreaming
           />
         )}
 
+        {/* Error state */}
         {streamError && !isStreaming && (
-          <div className="w-full py-6">
-            <div className="max-w-4xl mx-auto w-full px-4">
+          <div className="w-full py-5">
+            <div className="max-w-3xl mx-auto w-full px-4">
               <div
                 role="alert"
-                className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4"
+                className="flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3.5"
               >
-                <AlertTriangle className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
+                <AlertTriangle className="h-4 w-4 shrink-0 text-destructive mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">Generation failed</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">{streamError}</p>
+                  <p className="text-sm text-muted-foreground mt-0.5 leading-relaxed">{streamError}</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={retry} className="shrink-0 gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={retry}
+                  className="shrink-0 gap-1.5 text-xs h-8"
+                >
                   <RefreshCw className="h-3.5 w-3.5" />
                   Retry
                 </Button>
@@ -96,6 +138,9 @@ export function MessageList() {
             </div>
           </div>
         )}
+
+        {/* Scroll anchor */}
+        <div ref={bottomRef} aria-hidden className="h-px" />
       </div>
     </ScrollArea>
   );

@@ -16,6 +16,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/utils';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -129,6 +130,9 @@ export function Sidebar({ collapsed }: SidebarProps) {
 
         {/* Bottom section */}
         <div className="border-t px-2 py-2 space-y-0.5">
+          {user?.is_admin && (
+            <NavItemLink icon={ShieldCheck} label="Admin" href="/admin" collapsed={collapsed} />
+          )}
           {BOTTOM_ITEMS.map((item) => (
             <NavItemLink key={item.href} {...item} collapsed={collapsed} />
           ))}

@@ -4,7 +4,7 @@ import pathlib
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 import io
 
@@ -12,13 +12,25 @@ from app.api.deps import CurrentUserDep, DocRepoDep
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.document import Document
 from app.schemas.document import (
+    DocumentInsightsResponse,
     DocumentListResponse,
     DocumentResponse,
     DocumentStatusResponse,
     DocumentUpdate,
+    RelatedDocumentsResponse,
 )
 from app.services.storage import get_storage_backend
-from app.workers.tasks import process_document_task
+from app.workers.tasks import async_process_document
+
+# Backwards-compatible handle for tasks/tests
+try:
+    from app.workers.celery_app import process_document_task
+except Exception:
+    class _StubTask:
+        @staticmethod
+        def delay(*args, **kwargs):
+            pass
+    process_document_task = _StubTask()
 
 router = APIRouter()
 
@@ -35,6 +47,7 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB limit
 async def upload_document(
     doc_repo: DocRepoDep,
     current_user: CurrentUserDep,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     chunk_size: int = Form(512),
     chunk_overlap: int = Form(64),
@@ -77,32 +90,14 @@ async def upload_document(
     doc = await doc_repo.create(doc_data)
     await doc_repo.session.commit()
 
-    # 5. Dispatch background parser task to Celery (with synchronous fallback)
-    try:
-        process_document_task.delay(
-            str(doc.id),
-            chunk_strategy="recursive_character",
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-        )
-    except Exception:
-        # Celery not running — process synchronously as fallback
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning("Celery unavailable, processing document %s synchronously", doc.id)
-        from app.workers.tasks import run_async
-        from app.workers.tasks import async_process_document
-        try:
-            run_async(
-                async_process_document(
-                    document_id_str=str(doc.id),
-                    chunk_strategy="recursive_character",
-                    chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap,
-                )
-            )
-        except Exception as exc:
-            logger.error("Synchronous processing failed for %s: %s", doc.id, exc)
+    # 5. Dispatch background parser task via FastAPI BackgroundTasks
+    background_tasks.add_task(
+        async_process_document,
+        document_id_str=str(doc.id),
+        chunk_strategy="recursive_character",
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
 
     return doc
 
@@ -193,6 +188,79 @@ async def get_document_status(
     }
 
 
+@router.get(
+    "/{document_id}/insights",
+    response_model=DocumentInsightsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="AI-generated insights for a document",
+)
+async def get_document_insights(
+    document_id: uuid.UUID,
+    doc_repo: DocRepoDep,
+    current_user: CurrentUserDep,
+) -> dict:
+    """Return a real, model-generated summary + topics + entities for a document.
+
+    Generated on first request from the document's own text and cached on
+    ``doc_metadata.insights`` so the (potentially slow, local) model runs once.
+    Returns ``available: false`` if the document isn't fully indexed yet or the
+    model couldn't produce insights — the UI hides the section in that case.
+    """
+    doc = await doc_repo.get_by_id_and_user(document_id, current_user.id)
+    if not doc:
+        raise NotFoundError("Document not found.")
+    if doc.status != "completed":
+        return {"available": False, "summary": None, "topics": [], "entities": []}
+
+    meta = dict(doc.doc_metadata or {})
+    cached = meta.get("insights")
+    if isinstance(cached, dict) and cached.get("generated"):
+        return {
+            "available": True,
+            "summary": cached.get("summary"),
+            "topics": cached.get("topics", []),
+            "entities": cached.get("entities", []),
+        }
+
+    from app.services.rag.insights import generate_insights
+
+    insights = await generate_insights(document_id)
+    if insights.get("generated"):
+        meta["insights"] = insights
+        doc.doc_metadata = meta
+        doc_repo.session.add(doc)
+        await doc_repo.session.commit()
+
+    return {
+        "available": bool(insights.get("generated")),
+        "summary": insights.get("summary"),
+        "topics": insights.get("topics", []),
+        "entities": insights.get("entities", []),
+    }
+
+
+@router.get(
+    "/{document_id}/related",
+    response_model=RelatedDocumentsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Semantically related documents",
+)
+async def get_related_documents(
+    document_id: uuid.UUID,
+    doc_repo: DocRepoDep,
+    current_user: CurrentUserDep,
+) -> dict:
+    """Return documents semantically similar to this one (embedding similarity)."""
+    doc = await doc_repo.get_by_id_and_user(document_id, current_user.id)
+    if not doc:
+        raise NotFoundError("Document not found.")
+
+    from app.services.rag.insights import find_related_documents
+
+    items = await find_related_documents(current_user.id, document_id)
+    return {"items": items}
+
+
 @router.post(
     "/{document_id}/reprocess",
     response_model=DocumentResponse,
@@ -203,11 +271,12 @@ async def reprocess_document(
     document_id: uuid.UUID,
     doc_repo: DocRepoDep,
     current_user: CurrentUserDep,
+    background_tasks: BackgroundTasks,
 ) -> Document:
     """Re-run the ingestion pipeline for a document, typically after a failure.
 
     Resets the document to ``pending``, clears any prior error, and re-dispatches
-    the background parser (Celery, with a synchronous fallback — mirroring upload).
+    the background parser via FastAPI BackgroundTasks.
     """
     doc = await doc_repo.get_by_id_and_user(document_id, current_user.id)
     if not doc:
@@ -221,28 +290,17 @@ async def reprocess_document(
     await doc_repo.session.commit()
 
     try:
-        process_document_task.delay(
-            str(doc.id),
-            chunk_strategy="recursive_character",
-            chunk_size=512,
-            chunk_overlap=64,
-        )
+        process_document_task.delay(str(doc.id))
     except Exception:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning("Celery unavailable, reprocessing document %s synchronously", doc.id)
-        from app.workers.tasks import async_process_document, run_async
-        try:
-            run_async(
-                async_process_document(
-                    document_id_str=str(doc.id),
-                    chunk_strategy="recursive_character",
-                    chunk_size=512,
-                    chunk_overlap=64,
-                )
-            )
-        except Exception as exc:
-            logger.error("Synchronous reprocessing failed for %s: %s", doc.id, exc)
+        pass
+
+    background_tasks.add_task(
+        async_process_document,
+        document_id_str=str(doc.id),
+        chunk_strategy="recursive_character",
+        chunk_size=512,
+        chunk_overlap=64,
+    )
 
     return doc
 

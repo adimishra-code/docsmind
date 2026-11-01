@@ -66,9 +66,15 @@ async def lifespan(app: FastAPI):
     try:
         from app.services.rag.vector_store import QdrantAdapter
         qdrant = QdrantAdapter()
-        await qdrant.client.get_collections()
-        deps["qdrant"] = "ok"
-        logger.info("Qdrant connection verified")
+        try:
+            await qdrant.client.get_collections()
+        except Exception as e:
+            if await qdrant._fallback_to_local_if_needed(e):
+                await qdrant.client.get_collections()
+            else:
+                raise
+        deps["qdrant"] = "ok (embedded disk)" if getattr(qdrant, "_using_local", False) else "ok (remote)"
+        logger.info("Qdrant connection verified", status=deps["qdrant"])
     except Exception as exc:
         deps["qdrant"] = f"unavailable: {exc}"
         logger.warning("Qdrant not reachable on startup", error=str(exc))
@@ -236,7 +242,7 @@ async def get_openapi_schema():
 @app.get("/health", status_code=status.HTTP_200_OK, tags=["system"])
 async def health_check(request: Request) -> dict:
     deps = getattr(request.app.state, "dependency_health", {})
-    all_ok = all(v == "ok" for v in deps.values())
+    all_ok = all(isinstance(v, str) and v.startswith("ok") for v in deps.values())
     return {
         "status": "healthy" if all_ok else "degraded",
         "service": settings.APP_NAME,
@@ -253,7 +259,7 @@ async def readiness_check(request: Request) -> Response:
     backend whose datastore is down.
     """
     deps = getattr(request.app.state, "dependency_health", {})
-    all_ok = bool(deps) and all(v == "ok" for v in deps.values())
+    all_ok = bool(deps) and all(isinstance(v, str) and v.startswith("ok") for v in deps.values())
     return JSONResponse(
         status_code=status.HTTP_200_OK if all_ok else status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"status": "ready" if all_ok else "not_ready", "dependencies": deps},

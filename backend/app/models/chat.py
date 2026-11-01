@@ -24,7 +24,7 @@ class ChatSession(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # Relationships
     user: Mapped[User] = relationship("User", back_populates="chats")
     messages: Mapped[list[ChatMessage]] = relationship(
-        "ChatMessage", back_populates="chat", cascade="all, delete-orphan"
+        "ChatMessage", back_populates="chat", cascade="all, delete-orphan", order_by="ChatMessage.created_at"
     )
 
 
@@ -37,6 +37,7 @@ class ChatMessage(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     role: Mapped[str] = mapped_column(String(50), nullable=False)  # user, assistant, system
     content: Mapped[str] = mapped_column(Text, nullable=False)
     citations: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    meta: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # Relationships
     chat: Mapped[ChatSession] = relationship("ChatSession", back_populates="messages")

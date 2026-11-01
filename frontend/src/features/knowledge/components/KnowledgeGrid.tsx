@@ -129,7 +129,7 @@ export function KnowledgeGrid() {
                 <MetadataCard
                   filename={doc.filename}
                   fileType={doc.file_type}
-                  sizeBytes={doc.size_bytes}
+                  sizeBytes={doc.file_size}
                   createdAt={doc.created_at}
                   status={doc.status}
                   className="shadow-sm hover:shadow-md transition-shadow h-full"

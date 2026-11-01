@@ -1,6 +1,5 @@
 from app.services.agents.state import AgentState
-from langchain_openai import ChatOpenAI
-from app.core.config import settings
+from app.services.rag.llm_provider import get_llm_provider
 
 async def critic_node(state: AgentState) -> dict:
     messages = state.get("messages", [])
@@ -16,11 +15,6 @@ async def critic_node(state: AgentState) -> dict:
             "revision_count": next_revision,
         }
 
-    kwargs = {"model": settings.LLM_MODEL, "api_key": settings.OPENAI_API_KEY, "temperature": 0.3}
-    if settings.LLM_BASE_URL:
-        kwargs["base_url"] = settings.LLM_BASE_URL
-    llm = ChatOpenAI(**kwargs)
-
     prompt = (
         f"You are a critique agent evaluating a draft response for an enterprise document Q&A system.\n\n"
         f"Original Query: {query}\n\n"
@@ -34,5 +28,6 @@ async def critic_node(state: AgentState) -> dict:
         f"Critique:"
     )
 
-    response = await llm.ainvoke(prompt)
-    return {"verification_feedback": response.content, "revision_count": next_revision}
+    provider = get_llm_provider()
+    feedback = await provider.ainvoke(prompt, temperature=0.3)
+    return {"verification_feedback": feedback, "revision_count": next_revision}

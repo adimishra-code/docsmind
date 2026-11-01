@@ -82,6 +82,15 @@ export function Dashboard() {
     staleTime: 120_000,
   });
 
+  // Real workspace/knowledge-base status (never estimated). Kept live while any
+  // document is still being ingested.
+  const { data: health } = useQuery({
+    queryKey: ['workspace-health'],
+    queryFn: () => observabilityApi.getHealth(),
+    staleTime: 60_000,
+    refetchInterval: (query) => ((query.state.data?.processing_documents ?? 0) > 0 ? 4000 : false),
+  });
+
   const STATS = [
     {
       id: 'docs',
@@ -215,33 +224,53 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* System Status */}
-      {analytics && (
+      {/* System / knowledge-base status — real data only */}
+      {(analytics || health) && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Usage Summary</CardTitle>
+            <CardTitle className="text-base">Workspace Status</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
               <div>
+                <p className="text-muted-foreground text-xs mb-1">Knowledge base</p>
+                <p className="font-semibold flex items-center gap-1.5 capitalize">
+                  <span
+                    className={
+                      'inline-block h-2 w-2 rounded-full ' +
+                      (health?.knowledge_base_health === 'attention'
+                        ? 'bg-destructive'
+                        : health?.knowledge_base_health === 'processing'
+                          ? 'bg-warning'
+                          : 'bg-success')
+                    }
+                    aria-hidden
+                  />
+                  {health?.knowledge_base_health ?? '—'}
+                </p>
+                {health && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {health.indexed_documents} indexed
+                    {health.processing_documents > 0 && ` · ${health.processing_documents} processing`}
+                    {health.failed_documents > 0 && ` · ${health.failed_documents} failed`}
+                  </p>
+                )}
+              </div>
+              <div>
                 <p className="text-muted-foreground text-xs mb-1">Avg. Latency</p>
-                <p className="font-semibold">{analytics.average_latency_ms.toFixed(0)} ms</p>
+                <p className="font-semibold">{analytics ? `${analytics.average_latency_ms.toFixed(0)} ms` : '—'}</p>
               </div>
               <div>
                 <p className="text-muted-foreground text-xs mb-1">Total Cost</p>
-                <p className="font-semibold">${analytics.cumulative_cost_usd.toFixed(4)}</p>
+                <p className="font-semibold">{analytics ? `$${analytics.cumulative_cost_usd.toFixed(4)}` : '—'}</p>
               </div>
               <div>
                 <p className="text-muted-foreground text-xs mb-1">Top Topics</p>
                 <p className="font-semibold truncate">
-                  {analytics.most_searched_topics.length > 0
+                  {analytics && analytics.most_searched_topics.length > 0
                     ? analytics.most_searched_topics.slice(0, 2).map((t) => t.topic).join(', ')
                     : '—'}
                 </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground text-xs mb-1">Documents</p>
-                <p className="font-semibold">{docsData?.total ?? 0} total</p>
               </div>
             </div>
           </CardContent>

@@ -1,4 +1,4 @@
-﻿"""Shared LLM client singleton for OpenAI API calls."""
+"""Shared LLM client singleton for OpenAI API calls."""
 from __future__ import annotations
 
 from openai import AsyncOpenAI
@@ -15,9 +15,19 @@ def get_llm_client() -> AsyncOpenAI:
     global _llm_client
     if _llm_client is None:
         logger.info("Creating shared AsyncOpenAI client")
-        kwargs = {"api_key": settings.OPENAI_API_KEY}
-        if settings.LLM_BASE_URL:
-            kwargs["base_url"] = settings.LLM_BASE_URL
+        api_key = settings.LLM_API_KEY or settings.OPENAI_API_KEY
+        kwargs: dict = {"api_key": api_key}
+        base_url = settings.LLM_BASE_URL
+        if not base_url and settings.LLM_PROVIDER.lower().strip() == "openrouter":
+            base_url = "https://openrouter.ai/api/v1"
+        if base_url:
+            kwargs["base_url"] = base_url
+            if "openrouter.ai" in base_url:
+                kwargs["default_headers"] = {
+                    "HTTP-Referer": "https://docsmind.app",
+                    "X-Title": "DocsMind",
+                    "Authorization": f"Bearer {api_key}",
+                }
         _llm_client = AsyncOpenAI(**kwargs)
     return _llm_client
 

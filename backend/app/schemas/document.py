@@ -41,3 +41,24 @@ class DocumentListResponse(BaseModel):
     page: int = 1
     page_size: int = 100
     total_pages: int = 1
+
+
+class DocumentInsightsResponse(BaseModel):
+    """Real, model-generated document insights. ``available`` is False (with empty
+    fields) when the document isn't indexed yet or generation didn't succeed — the
+    UI hides the section rather than showing fabricated values."""
+    available: bool = False
+    summary: str | None = None
+    topics: list[str] = []
+    entities: list[str] = []
+
+
+class RelatedDocument(BaseModel):
+    document_id: uuid.UUID
+    filename: str
+    file_type: str
+    similarity: float
+
+
+class RelatedDocumentsResponse(BaseModel):
+    items: list[RelatedDocument] = []

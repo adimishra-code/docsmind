@@ -76,8 +76,6 @@ async def verify_email(
         user = await user_service.verify_email_token(token)
         session = user_service.user_repo.session
         await session.commit()
-        # Send welcome email
-        await send_welcome_email(user.email, user.full_name)
         redirect_url = f"{settings.FRONTEND_URL}/login?verified=true"
     except Exception:
         redirect_url = f"{settings.FRONTEND_URL}/login?error=invalid_token"
@@ -128,6 +126,13 @@ async def login(
         email=credentials.email, password=credentials.password
     )
     session = auth_service.user_repo.session
+
+    # Bootstrap: emails listed in ADMIN_EMAILS become admins on login. This
+    # seeds the first administrator; subsequent admins are promoted in-app.
+    if not user.is_admin and user.email.lower() in settings.admin_emails:
+        user.is_admin = True
+        session.add(user)
+
     token = await auth_service.create_session(user.id)
     await session.commit()
     return token
@@ -334,7 +339,8 @@ async def reset_password(
 async def google_login() -> RedirectResponse:
     """Redirect user to Google's OAuth2 consent screen."""
     if not settings.google_oauth_enabled:
-        raise ServiceUnavailableError("Google OAuth is not configured on this server.")
+        redirect_url = f"{settings.FRONTEND_URL}/login?error=google_oauth_not_configured"
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
 
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,

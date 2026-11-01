@@ -31,10 +31,13 @@ describe('document status helpers', () => {
     expect(documentStatusVariant('processing')).toBe('secondary');
   });
 
-  it('renders friendly labels', () => {
+  it('renders friendly, honest labels', () => {
     expect(documentStatusLabel('completed')).toBe('Ready');
     expect(documentStatusLabel('processing')).toBe('Processing');
-    expect(documentStatusLabel('pending')).toBe('Processing');
+    // 'pending' means queued in the worker pipeline, not actively processing —
+    // label it honestly so the UI doesn't overstate progress.
+    expect(documentStatusLabel('pending')).toBe('Queued');
+    expect(documentStatusLabel('uploading')).toBe('Uploading');
     expect(documentStatusLabel('failed')).toBe('Failed');
   });
 });

@@ -2,12 +2,14 @@ import React, { Suspense } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router';
 import { ProtectedRoute } from './ProtectedRoute';
 import { PublicRoute } from './PublicRoute';
+import { AdminRoute } from './AdminRoute';
 import { Login } from '@/features/auth/components/Login';
 import { Register } from '@/features/auth/components/Register';
 import { EmailSent } from '@/features/auth/components/EmailSent';
 import { OAuthCallback } from '@/features/auth/components/OAuthCallback';
 import { ForgotPassword } from '@/features/auth/components/ForgotPassword';
 import { ResetPassword } from '@/features/auth/components/ResetPassword';
+import { VerifyEmail } from '@/features/auth/components/VerifyEmail';
 import { AppShell } from '@/layouts/AppShell';
 import { PageSkeleton, ChatSkeleton } from '@/shared/LoadingSkeleton';
 import { Button } from '@/components/ui/button';
@@ -20,6 +22,8 @@ const AIWorkspace = React.lazy(() => import('@/features/chat/components/AIWorksp
 const ObservabilityDashboard = React.lazy(() => import('@/features/observability/components/ObservabilityDashboard').then(m => ({ default: m.ObservabilityDashboard })));
 const Settings = React.lazy(() => import('@/features/settings/components/Settings').then(m => ({ default: m.Settings })));
 const SearchPage = React.lazy(() => import('@/features/search/components/SearchPage').then(m => ({ default: m.SearchPage })));
+const AdminLogin = React.lazy(() => import('@/features/admin/components/AdminLogin').then(m => ({ default: m.AdminLogin })));
+const AdminPanel = React.lazy(() => import('@/features/admin/components/AdminPanel').then(m => ({ default: m.AdminPanel })));
 
 function NotFound() {
   const navigate = useNavigate();
@@ -58,6 +62,13 @@ export function AppRoutes() {
       <Route path="/oauth/callback" element={<OAuthCallback />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
+
+      {/* Admin console (separate login + admin-only panel, outside the app shell) */}
+      <Route path="/admin/login" element={<Suspense fallback={<PageSkeleton />}><AdminLogin /></Suspense>} />
+      <Route element={<AdminRoute />}>
+        <Route path="/admin" element={<Suspense fallback={<PageSkeleton />}><AdminPanel /></Suspense>} />
+      </Route>
 
       {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>

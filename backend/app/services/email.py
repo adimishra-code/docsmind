@@ -138,11 +138,51 @@ async def _send_email(
     html_content: str,
     text_content: str | None = None,
 ) -> bool:
-    """Send an email via SMTP. Returns True on success, False on failure."""
+    """Send an email via Google Apps Script Webhook or SMTP. Returns True on success, False on failure."""
     if not settings.EMAILS_ENABLED:
         logger.info("Emails disabled — skipping send to %s", to_email)
+        if text_content:
+            logger.info("Email content that would have been sent:\n%s", text_content)
         return True
 
+    # 1. Google Apps Script Gmail Relay (passwordless Gmail sending)
+    relay_url = settings.GMAIL_RELAY_URL or settings.EMAIL_WEBHOOK_URL
+    if relay_url:
+        try:
+            import httpx
+            payload = {
+                "to": to_email,
+                "subject": subject,
+                "html": html_content,
+                "text": text_content,
+                "name": settings.SMTP_FROM_NAME,
+            }
+            if settings.GMAIL_RELAY_SECRET:
+                payload["secret"] = settings.GMAIL_RELAY_SECRET
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    relay_url,
+                    json=payload,
+                    follow_redirects=True,
+                    timeout=15.0,
+                )
+                if resp.status_code in (200, 201, 302):
+                    try:
+                        res_json = resp.json()
+                        if res_json.get("error"):
+                            logger.error("Gmail relay error: %s", res_json["error"])
+                            return False
+                    except Exception:
+                        pass
+                    logger.info("Email sent via Gmail Relay to %s", to_email)
+                    return True
+                logger.error("Gmail relay failed (%s): %s", resp.status_code, resp.text)
+                return False
+        except Exception as exc:
+            logger.error("Failed to send email via Gmail Relay: %s", exc)
+            return False
+
+    # 2. Standard SMTP fallback
     if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
         logger.warning("SMTP credentials not configured — skipping email")
         return False
