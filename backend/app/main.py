@@ -168,24 +168,31 @@ app.add_middleware(LoggingMiddleware)
 
 
 # 4. CORS configuration
+origins: list[str] = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:3000",
+    "https://docsmind-beige.vercel.app",
+]
+if settings.FRONTEND_URL and settings.FRONTEND_URL not in origins:
+    origins.append(settings.FRONTEND_URL)
 if settings.BACKEND_CORS_ORIGINS:
-    cors_origins = [str(o) for o in settings.BACKEND_CORS_ORIGINS]
-    if "*" in cors_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=False,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
-    else:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=cors_origins,
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-            allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
-        )
+    for o in settings.BACKEND_CORS_ORIGINS:
+        o_str = str(o).strip()
+        if o_str and o_str != "*" and o_str not in origins:
+            origins.append(o_str)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 4.1 Rate Limiting Middleware
 app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
