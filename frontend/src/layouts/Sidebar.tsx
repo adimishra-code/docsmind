@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 import { cn } from '@/utils';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -26,6 +27,7 @@ interface SidebarProps {
   collapsed: boolean;
   onNavigate?: () => void;
   hideCollapseButton?: boolean;
+  onClose?: () => void;
 }
 
 const NAV_ITEMS = [
@@ -84,7 +86,7 @@ function NavItemLink({
   return link;
 }
 
-export function Sidebar({ collapsed, onNavigate, hideCollapseButton = false }: SidebarProps) {
+export function Sidebar({ collapsed, onNavigate, hideCollapseButton = false, onClose }: SidebarProps) {
   const user = useAuthStore((state) => state.user);
   const clearAuth = useAuthStore((state) => state.clearAuth);
   const toggleSidebar = useLayoutStore((state) => state.toggleSidebar);
@@ -114,7 +116,17 @@ export function Sidebar({ collapsed, onNavigate, hideCollapseButton = false }: S
               <span className="text-[15px] font-semibold tracking-tight">DocsMind</span>
             </div>
           )}
-          {!hideCollapseButton && (
+          {onClose ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              aria-label="Close menu"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          ) : !hideCollapseButton ? (
             <Button
               variant="ghost"
               size="icon"
@@ -123,7 +135,7 @@ export function Sidebar({ collapsed, onNavigate, hideCollapseButton = false }: S
             >
               {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </Button>
-          )}
+          ) : null}
         </div>
 
         {/* Main nav */}

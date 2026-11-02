@@ -42,6 +42,7 @@ import { formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 interface ConversationSidebarProps {
   onSessionChange?: (sessionId: string) => void;
   hideCollapseButton?: boolean;
+  onClose?: () => void;
 }
 
 function getGroupLabel(dateStr: string): string {
@@ -165,7 +166,7 @@ function SessionItem({ session, isActive, onSelect, onRename, onPin, onDelete }:
   );
 }
 
-export function ConversationSidebar({ onSessionChange, hideCollapseButton = false }: ConversationSidebarProps) {
+export function ConversationSidebar({ onSessionChange, hideCollapseButton = false, onClose }: ConversationSidebarProps) {
   const { id: activeId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -255,12 +256,9 @@ export function ConversationSidebar({ onSessionChange, hideCollapseButton = fals
     <TooltipProvider>
       <div className="flex flex-col h-full bg-card border-r">
         {/* Header */}
-        <div className={cn(
-          "flex items-center justify-between h-14 px-3 border-b shrink-0",
-          hideCollapseButton && "pr-12"
-        )}>
+        <div className="flex items-center justify-between h-14 px-3 border-b shrink-0">
           <span className="text-sm font-semibold text-foreground">Conversations</span>
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -268,7 +266,7 @@ export function ConversationSidebar({ onSessionChange, hideCollapseButton = fals
                   size="icon"
                   onClick={handleNewChat}
                   disabled={isCreating}
-                  className="h-8 w-8"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
                   aria-label="New chat"
                 >
                   {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
@@ -276,7 +274,17 @@ export function ConversationSidebar({ onSessionChange, hideCollapseButton = fals
               </TooltipTrigger>
               <TooltipContent>New chat</TooltipContent>
             </Tooltip>
-            {!hideCollapseButton && (
+            {onClose ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                aria-label="Close conversations"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            ) : !hideCollapseButton ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -291,7 +299,7 @@ export function ConversationSidebar({ onSessionChange, hideCollapseButton = fals
                 </TooltipTrigger>
                 <TooltipContent>Collapse panel</TooltipContent>
               </Tooltip>
-            )}
+            ) : null}
           </div>
         </div>
 

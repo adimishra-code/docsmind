@@ -31,10 +31,11 @@ export function AppShell() {
 
       {/* Mobile Sidebar Sheet (visible only when triggered on screens < 768px) */}
       <Sheet open={isMobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetContent side="left" className="p-0 w-[260px] sm:w-[280px]">
+        <SheetContent side="left" hideCloseButton className="p-0 w-[260px] sm:w-[280px]">
           <Sidebar
             collapsed={false}
             hideCollapseButton
+            onClose={() => setMobileMenuOpen(false)}
             onNavigate={() => setMobileMenuOpen(false)}
           />
         </SheetContent>

@@ -175,18 +175,22 @@ export function AIWorkspace() {
 
         {/* Mobile Slide-Over Sheets */}
         <Sheet open={isMobileChatsOpen} onOpenChange={setMobileChatsOpen}>
-          <SheetContent side="left" className="p-0 w-[300px] sm:w-[360px]">
+          <SheetContent side="left" hideCloseButton className="p-0 w-[300px] sm:w-[360px]">
             <ConversationSidebar
               hideCollapseButton
+              onClose={() => setMobileChatsOpen(false)}
               onSessionChange={() => setMobileChatsOpen(false)}
             />
           </SheetContent>
         </Sheet>
 
         <Sheet open={isMobileContextOpen} onOpenChange={setMobileContextOpen}>
-          <SheetContent side="right" className="p-0 w-[300px] sm:w-[360px]">
+          <SheetContent side="right" hideCloseButton className="p-0 w-[300px] sm:w-[360px]">
             <div className="h-full bg-muted/30">
-              <ContextManager hideCloseButton />
+              <ContextManager
+                hideCloseButton
+                onClose={() => setMobileContextOpen(false)}
+              />
             </div>
           </SheetContent>
         </Sheet>

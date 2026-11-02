@@ -9,9 +9,10 @@ const CONTEXT_WINDOW_TOKENS = 128_000;
 
 interface ContextManagerProps {
   hideCloseButton?: boolean;
+  onClose?: () => void;
 }
 
-export function ContextManager({ hideCloseButton = false }: ContextManagerProps) {
+export function ContextManager({ hideCloseButton = false, onClose }: ContextManagerProps) {
   const { pinnedDocuments, unpinDocument, clearContext, toggleContextPanel } = useContextStore();
   const estimatedTokens = pinnedDocuments.reduce(
     (acc, doc) => acc + ((doc.file_size ?? 0) * 0.25),
@@ -22,10 +23,7 @@ export function ContextManager({ hideCloseButton = false }: ContextManagerProps)
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className={cn(
-        "flex items-center justify-between px-4 h-14 border-b shrink-0",
-        hideCloseButton && "pr-12"
-      )}>
+      <div className="flex items-center justify-between px-3 sm:px-4 h-14 border-b shrink-0">
         <div className="flex items-center gap-2">
           <BookOpen className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
           <span className="text-sm font-medium">Context</span>
@@ -35,28 +33,38 @@ export function ContextManager({ hideCloseButton = false }: ContextManagerProps)
             </span>
           )}
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           {pinnedDocuments.length > 0 && (
             <Button
               variant="ghost"
               size="sm"
               onClick={clearContext}
-              className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground mr-1"
+              className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
             >
               Clear all
             </Button>
           )}
-          {!hideCloseButton && (
+          {onClose ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              aria-label="Close context panel"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          ) : !hideCloseButton ? (
             <Button
               variant="ghost"
               size="icon"
               onClick={toggleContextPanel}
-              className="h-8 w-8 text-muted-foreground hover:text-foreground -mr-2"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
               aria-label="Close context panel"
             >
               <PanelRightClose className="h-4 w-4" />
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
 
