@@ -1,25 +1,46 @@
-import React from 'react';
-import { Outlet } from 'react-router';
+import React, { useEffect } from 'react';
+import { Outlet, useLocation } from 'react-router';
 import { Sidebar } from './Sidebar';
 import { TopNavigation } from './TopNavigation';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { ErrorBoundary } from '@/shared/ErrorBoundary';
 import { useLayoutStore } from '@/store/useLayoutStore';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/utils';
 
 export function AppShell() {
-  const { isSidebarCollapsed } = useLayoutStore();
+  const { isSidebarCollapsed, isMobileMenuOpen, setMobileMenuOpen } = useLayoutStore();
+  const location = useLocation();
+
+  // Close mobile drawer on navigation
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname, setMobileMenuOpen]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
+      {/* Desktop Sidebar (hidden on screens < 768px) */}
       <div
         className={cn(
-          'shrink-0 transition-all duration-200 ease-in-out',
+          'hidden md:block shrink-0 transition-all duration-200 ease-in-out',
           isSidebarCollapsed ? 'w-[64px]' : 'w-[240px]'
         )}
       >
         <Sidebar collapsed={isSidebarCollapsed} />
       </div>
+
+      {/* Mobile Sidebar Sheet (visible only when triggered on screens < 768px) */}
+      <Sheet open={isMobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="p-0 w-[260px] sm:w-[280px]">
+          <Sidebar
+            collapsed={false}
+            hideCollapseButton
+            onNavigate={() => setMobileMenuOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
+
+      {/* Main Content Area */}
       <div className="flex flex-col flex-1 min-w-0">
         <OfflineBanner />
         <TopNavigation />

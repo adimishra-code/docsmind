@@ -121,7 +121,7 @@ export function Dashboard() {
   const recentChats = chatsData?.items?.slice(0, 4) ?? [];
 
   return (
-    <div className="p-6 max-w-[1200px] mx-auto space-y-8 animate-fade-in">
+    <div className="p-4 sm:p-6 max-w-[1200px] mx-auto space-y-6 sm:space-y-8 animate-fade-in">
       {/* Welcome */}
       <div>
         <h1 className="text-[26px] font-semibold tracking-tight text-balance">Welcome back, {firstName}</h1>

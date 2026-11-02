@@ -24,6 +24,8 @@ import { useLayoutStore } from '@/store/useLayoutStore';
 
 interface SidebarProps {
   collapsed: boolean;
+  onNavigate?: () => void;
+  hideCollapseButton?: boolean;
 }
 
 const NAV_ITEMS = [
@@ -38,10 +40,23 @@ const BOTTOM_ITEMS = [
   { icon: Settings, label: 'Settings', href: '/settings' },
 ] as const;
 
-function NavItemLink({ icon: Icon, label, href, collapsed }: { icon: any; label: string; href: string; collapsed: boolean }) {
+function NavItemLink({
+  icon: Icon,
+  label,
+  href,
+  collapsed,
+  onNavigate,
+}: {
+  icon: any;
+  label: string;
+  href: string;
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
   const link = (
     <NavLink
       to={href}
+      onClick={onNavigate}
       className={({ isActive }) =>
         cn(
           'group/nav relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150',
@@ -69,7 +84,7 @@ function NavItemLink({ icon: Icon, label, href, collapsed }: { icon: any; label:
   return link;
 }
 
-export function Sidebar({ collapsed }: SidebarProps) {
+export function Sidebar({ collapsed, onNavigate, hideCollapseButton = false }: SidebarProps) {
   const user = useAuthStore((state) => state.user);
   const clearAuth = useAuthStore((state) => state.clearAuth);
   const toggleSidebar = useLayoutStore((state) => state.toggleSidebar);
@@ -77,6 +92,11 @@ export function Sidebar({ collapsed }: SidebarProps) {
   const initials = user?.full_name
     ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : user?.email?.[0]?.toUpperCase() ?? 'U';
+
+  const handleSignOut = () => {
+    onNavigate?.();
+    clearAuth();
+  };
 
   return (
     <TooltipProvider>
@@ -94,21 +114,23 @@ export function Sidebar({ collapsed }: SidebarProps) {
               <span className="text-[15px] font-semibold tracking-tight">DocsMind</span>
             </div>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleSidebar}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-          >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </Button>
+          {!hideCollapseButton && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            >
+              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </Button>
+          )}
         </div>
 
         {/* Main nav */}
         <ScrollArea className="flex-1 py-3 px-2">
           <nav className="space-y-0.5">
             {NAV_ITEMS.map((item) => (
-              <NavItemLink key={item.href} {...item} collapsed={collapsed} />
+              <NavItemLink key={item.href} {...item} collapsed={collapsed} onNavigate={onNavigate} />
             ))}
           </nav>
 
@@ -121,7 +143,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
                 </p>
               </div>
               <div className="space-y-0.5">
-                <NavItemLink icon={Upload} label="Upload" href="/documents?upload=true" collapsed={collapsed} />
+                <NavItemLink icon={Upload} label="Upload" href="/documents?upload=true" collapsed={collapsed} onNavigate={onNavigate} />
               </div>
             </>
           )}
@@ -130,10 +152,10 @@ export function Sidebar({ collapsed }: SidebarProps) {
         {/* Bottom section */}
         <div className="border-t px-2 py-2 space-y-0.5">
           {user?.is_admin && (
-            <NavItemLink icon={ShieldCheck} label="Admin" href="/admin" collapsed={collapsed} />
+            <NavItemLink icon={ShieldCheck} label="Admin" href="/admin" collapsed={collapsed} onNavigate={onNavigate} />
           )}
           {BOTTOM_ITEMS.map((item) => (
-            <NavItemLink key={item.href} {...item} collapsed={collapsed} />
+            <NavItemLink key={item.href} {...item} collapsed={collapsed} onNavigate={onNavigate} />
           ))}
 
           <Separator className="my-2" />
@@ -143,7 +165,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => clearAuth()}
+                  onClick={handleSignOut}
                   className="flex w-full items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                 >
                   <LogOut className="h-4 w-4" />
@@ -166,7 +188,7 @@ export function Sidebar({ collapsed }: SidebarProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => clearAuth()}
+                onClick={handleSignOut}
                 className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
               >
                 <LogOut className="h-3.5 w-3.5" />

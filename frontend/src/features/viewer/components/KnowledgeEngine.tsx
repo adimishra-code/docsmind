@@ -17,22 +17,28 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { ResizablePanel, ResizablePanelGroup, ResizableHandle } from '@/components/ui/resizable';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { FileText, Download, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export function KnowledgeEngine() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const setActiveDocument = useViewerStore((state) => state.setActiveDocument);
   const jumpTo = useViewerStore((state) => state.jumpTo);
-  const { isMetadataPanelOpen, isTimelinePanelOpen } = useViewerStore();
+  const {
+    isMetadataPanelOpen,
+    isTimelinePanelOpen,
+    toggleMetadataPanel,
+    toggleTimelinePanel,
+  } = useViewerStore();
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   useEffect(() => {
     if (id) setActiveDocument(id);
     return () => setActiveDocument(null);
   }, [id, setActiveDocument]);
 
-  // Deep-link from a chat citation: `?page=26&highlight=<cited passage>`. Runs
-  // after setActiveDocument (which resets to page 1) so the cited page wins.
   useEffect(() => {
     const page = Number(searchParams.get('page'));
     const highlight = searchParams.get('highlight');
@@ -47,8 +53,6 @@ export function KnowledgeEngine() {
     queryKey: ['document', id],
     queryFn: () => documentsApi.getById(id!),
     enabled: !!id,
-    // Live-refresh while the document is still being ingested; stop once it
-    // reaches a terminal state (completed | failed). Mirrors the workspace grid.
     refetchInterval: (query) =>
       query.state.data && isDocumentProcessing(query.state.data.status) ? 4000 : false,
   });
@@ -58,12 +62,10 @@ export function KnowledgeEngine() {
   }
 
   if (!document) {
-    return <div className="flex items-center justify-center h-full">Document not found</div>;
+    return <div className="flex items-center justify-center h-full text-muted-foreground">Document not found</div>;
   }
 
   const renderAdapter = () => {
-    // The document is the single source of truth: gate the preview on its
-    // lifecycle status before attempting to render any file adapter.
     if (isDocumentFailed(document.status)) {
       return <FailedState document={document} />;
     }
@@ -71,14 +73,38 @@ export function KnowledgeEngine() {
       return <ProcessingState document={document} />;
     }
     if (document.file_type === 'pdf') {
-      // Points at the real backend download endpoint; react-pdf streams from it.
       const fileUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:8006'}/api/v1/documents/${id}/download`;
       return <PDFAdapter url={fileUrl} />;
     }
-    // Inline preview currently only supports PDFs — offer a download instead of a dead end.
     return <UnsupportedPreview document={document} />;
   };
 
+  // Mobile / Small Tablet View (< 768px): Full width adapter + slide-over Sheet
+  if (!isDesktop) {
+    return (
+      <div className="flex h-full w-full overflow-hidden bg-muted/10 relative">
+        <div className="flex-1 h-full w-full overflow-hidden">
+          {renderAdapter()}
+        </div>
+
+        {/* Mobile Properties / Metadata Drawer */}
+        <Sheet open={isMetadataPanelOpen} onOpenChange={() => toggleMetadataPanel()}>
+          <SheetContent side="right" className="p-0 w-[300px] sm:w-[360px]">
+            <MetadataPanel document={document} />
+          </SheetContent>
+        </Sheet>
+
+        {/* Mobile Timeline Drawer */}
+        <Sheet open={isTimelinePanelOpen} onOpenChange={() => toggleTimelinePanel()}>
+          <SheetContent side="right" className="p-0 w-[300px] sm:w-[360px]">
+            <ActivityTimeline document={document} />
+          </SheetContent>
+        </Sheet>
+      </div>
+    );
+  }
+
+  // Desktop View (>= 768px): Resizable horizontal split
   return (
     <div className="flex h-full w-full overflow-hidden bg-muted/10">
       <ResizablePanelGroup orientation="horizontal">

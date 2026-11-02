@@ -38,7 +38,7 @@ export function SearchPage() {
   const results = data?.results ?? [];
 
   return (
-    <div className="p-6 max-w-[800px] mx-auto space-y-6 animate-fade-in">
+    <div className="p-4 sm:p-6 max-w-[800px] mx-auto space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
         <p className="text-muted-foreground mt-1">

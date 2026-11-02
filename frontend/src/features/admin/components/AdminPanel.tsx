@@ -14,14 +14,14 @@ import { ShieldCheck, ShieldPlus, ShieldMinus, Users, FileText, MessageSquare, L
 
 function StatCard({ icon: Icon, label, value, loading }: { icon: any; label: string; value?: number; loading: boolean }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <div className="rounded-xl border bg-card p-3 sm:p-4">
+      <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-medium uppercase tracking-wide text-muted-foreground">
         <Icon className="h-3.5 w-3.5" /> {label}
       </div>
       {loading ? (
         <Skeleton className="mt-2 h-7 w-16" />
       ) : (
-        <p className="mt-1 text-2xl font-semibold tabular-nums">{value ?? 0}</p>
+        <p className="mt-1 text-xl sm:text-2xl font-semibold tabular-nums">{value ?? 0}</p>
       )}
     </div>
   );
@@ -83,30 +83,38 @@ export function AdminPanel() {
   return (
     <div className="min-h-screen bg-muted/20">
       {/* Header */}
-      <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-background px-6">
+      <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-background px-4 sm:px-6">
         <div className="flex items-center gap-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-md bg-foreground text-background">
             <ShieldCheck className="h-3.5 w-3.5" />
           </div>
           <span className="text-[15px] font-semibold tracking-tight">Admin Console</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="hidden text-sm text-muted-foreground sm:inline">{currentUser?.email}</span>
-          <Button variant="outline" size="sm" onClick={() => navigate('/dashboard')}>Back to app</Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { clearAuth(); navigate('/admin/login'); }} aria-label="Sign out">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <span className="hidden text-sm text-muted-foreground md:inline">{currentUser?.email}</span>
+          <Button variant="outline" size="sm" onClick={() => navigate('/dashboard')} className="text-xs sm:text-sm">
+            Back to app
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => { clearAuth(); navigate('/admin/login'); }}
+            aria-label="Sign out"
+          >
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl space-y-6 p-6">
+      <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Overview</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">Manage users and administrator access.</p>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5 sm:gap-3">
           <StatCard icon={Users} label="Users" value={stats.data?.total_users} loading={stats.isLoading} />
           <StatCard icon={ShieldCheck} label="Admins" value={stats.data?.total_admins} loading={stats.isLoading} />
           <StatCard icon={Users} label="Active" value={stats.data?.active_users} loading={stats.isLoading} />
@@ -149,13 +157,13 @@ export function AdminPanel() {
             />
           </div>
 
-          <div className="rounded-xl border bg-card">
-            <Table>
+          <div className="rounded-xl border bg-card overflow-x-auto w-full">
+            <Table className="min-w-full">
               <TableHeader>
                 <TableRow>
                   <TableHead>User</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>Joined</TableHead>
+                  <TableHead className="hidden sm:table-cell">Joined</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -177,18 +185,18 @@ export function AdminPanel() {
                     const isSelf = u.id === currentUser?.id;
                     return (
                       <TableRow key={u.id}>
-                        <TableCell>
-                          <div className="font-medium">{u.full_name || '—'}</div>
-                          <div className="text-xs text-muted-foreground">{u.email}</div>
+                        <TableCell className="max-w-[160px] sm:max-w-none">
+                          <div className="font-medium truncate">{u.full_name || '—'}</div>
+                          <div className="text-xs text-muted-foreground truncate">{u.email}</div>
                         </TableCell>
                         <TableCell>
                           {u.is_admin ? (
-                            <Badge className="gap-1"><ShieldCheck className="h-3 w-3" /> Admin</Badge>
+                            <Badge className="gap-1 text-[11px] sm:text-xs"><ShieldCheck className="h-3 w-3" /> Admin</Badge>
                           ) : (
-                            <Badge variant="secondary">Member</Badge>
+                            <Badge variant="secondary" className="text-[11px] sm:text-xs">Member</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
+                        <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">
                           {(() => {
                             try { return format(new Date(u.created_at), 'MMM d, yyyy'); } catch { return '—'; }
                           })()}
@@ -198,22 +206,24 @@ export function AdminPanel() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="gap-1.5 text-muted-foreground hover:text-destructive"
+                              className="gap-1.5 text-xs text-muted-foreground hover:text-destructive"
                               disabled={isSelf || demoteMutation.isPending}
                               title={isSelf ? "You can't revoke your own access" : 'Revoke admin'}
                               onClick={() => demoteMutation.mutate(u.email)}
                             >
-                              <ShieldMinus className="h-4 w-4" /> Revoke
+                              <ShieldMinus className="h-3.5 w-3.5" />
+                              <span className="hidden sm:inline">Revoke</span>
                             </Button>
                           ) : (
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="gap-1.5"
+                              className="gap-1.5 text-xs"
                               disabled={promoteMutation.isPending}
                               onClick={() => promoteMutation.mutate(u.email)}
                             >
-                              <ShieldPlus className="h-4 w-4" /> Make admin
+                              <ShieldPlus className="h-3.5 w-3.5" />
+                              <span className="hidden sm:inline">Make admin</span>
                             </Button>
                           )}
                         </TableCell>

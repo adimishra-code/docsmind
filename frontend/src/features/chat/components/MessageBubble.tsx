@@ -58,7 +58,7 @@ export function MessageBubble({ message, isStreaming = false, onRegenerate }: Me
       // Assistant messages: warm muted band provides visual rhythm and anchors the answer.
       isUser ? "bg-card/80" : "bg-muted/40",
     )}>
-      <div className="max-w-3xl mx-auto w-full flex gap-4 px-4">
+      <div className="max-w-3xl mx-auto w-full flex gap-3 sm:gap-4 px-3 sm:px-4">
         {/* Avatar */}
         <div className="flex-shrink-0 mt-0.5">
           {isUser ? (
@@ -79,7 +79,7 @@ export function MessageBubble({ message, isStreaming = false, onRegenerate }: Me
           </p>
 
           {/* Content — prose-sm keeps chat-appropriate 14px base text */}
-          <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none leading-relaxed">
+          <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none leading-relaxed break-words">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
@@ -118,7 +118,7 @@ export function MessageBubble({ message, isStreaming = false, onRegenerate }: Me
 
           {/* Copy / Regenerate actions */}
           {showActions && (
-            <div className="mt-2 flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
+            <div className="mt-2 flex items-center gap-1 opacity-100 sm:opacity-0 transition-opacity duration-150 sm:group-hover:opacity-100 focus-within:opacity-100">
               <Button
                 variant="ghost"
                 size="sm"

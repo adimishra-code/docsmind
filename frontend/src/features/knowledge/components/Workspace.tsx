@@ -58,12 +58,6 @@ export function Workspace() {
     noKeyboard: true,
   });
 
-  // Open the OS file picker exactly once when arriving via the "Upload" quick
-  // action (?upload=true). We clear the param through the router — not
-  // window.history — so react-router's own state stays in sync; using
-  // replaceState here left `upload=true` live in the router and re-opened the
-  // picker on every re-render. The ref guard makes it idempotent even if the
-  // param clear and the effect race.
   useEffect(() => {
     if (!isUploadMode) {
       uploadTriggeredRef.current = false;
@@ -84,7 +78,7 @@ export function Workspace() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       uploadFiles(Array.from(e.target.files));
-      e.target.value = ''; // Reset input
+      e.target.value = '';
     }
   };
 
@@ -116,7 +110,6 @@ export function Workspace() {
       description: `Starting download for ${selectedDocumentIds.length} documents.`,
     });
     
-    // Fetch all documents to resolve their names
     try {
       const response = await documentsApi.getAll();
       const docsMap = new Map(response.items.map(d => [d.id, d]));
@@ -125,7 +118,6 @@ export function Workspace() {
         const doc = docsMap.get(id);
         if (doc) {
           await documentsApi.download(id, doc.filename);
-          // Small delay to prevent browser blocking multiple downloads
           await new Promise(r => setTimeout(r, 300));
         }
       }
@@ -158,23 +150,25 @@ export function Workspace() {
         </div>
       )}
 
-      <div className={cn("flex flex-col h-full p-6", isDragActive && "opacity-50")}>
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <div className={cn("flex flex-col h-full p-4 sm:p-6", isDragActive && "opacity-50")}>
+        {/* Responsive Header: stacks title & actions gracefully */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Documents</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Manage your knowledge base.</p>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
             <Button
               onClick={() => fileInputRef.current?.click()}
               size="sm"
-              className="gap-1.5"
+              className="gap-1.5 shrink-0"
             >
               <Upload className="h-4 w-4" /> Upload Files
             </Button>
-            <SearchPlatform />
+            <div className="flex-1 sm:flex-initial">
+              <SearchPlatform />
+            </div>
           </div>
         </div>
 
@@ -184,34 +178,36 @@ export function Workspace() {
         </div>
       </div>
 
-      {/* Bulk Action Bar */}
+      {/* Bulk Action Bar — clamp to screen width on mobile */}
       {selectedDocumentIds.length > 0 && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-card border shadow-lg rounded-full px-5 py-3 flex items-center gap-4 z-40 animate-slide-up">
-          <span className="text-sm font-medium text-foreground">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-card border shadow-lg rounded-full px-3.5 sm:px-5 py-2 sm:py-3 flex items-center gap-2 sm:gap-4 z-40 animate-slide-up max-w-[calc(100vw-2rem)]">
+          <span className="text-xs sm:text-sm font-medium text-foreground whitespace-nowrap">
             {selectedDocumentIds.length} selected
           </span>
-          <div className="h-4 w-px bg-border" />
-          <div className="flex items-center gap-2">
+          <div className="h-4 w-px bg-border shrink-0" />
+          <div className="flex items-center gap-1 sm:gap-2">
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 gap-1.5 px-3 rounded-full hover:bg-accent text-foreground"
+              className="h-8 gap-1.5 px-2.5 sm:px-3 text-xs sm:text-sm rounded-full hover:bg-accent text-foreground"
               onClick={handleBulkDownload}
             >
-              <Download className="h-4 w-4" /> Download
+              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="hidden xs:inline">Download</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 gap-1.5 px-3 rounded-full hover:bg-destructive/10 text-destructive hover:text-destructive"
+              className="h-8 gap-1.5 px-2.5 sm:px-3 text-xs sm:text-sm rounded-full hover:bg-destructive/10 text-destructive hover:text-destructive"
               onClick={() => setShowConfirmDelete(true)}
             >
-              <Trash2 className="h-4 w-4" /> Delete
+              <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="hidden xs:inline">Delete</span>
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground shrink-0"
               onClick={clearSelection}
               aria-label="Clear selection"
             >

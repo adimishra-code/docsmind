@@ -65,7 +65,7 @@ export function Settings() {
   const nameChanged = (name.trim() || null) !== (user?.full_name ?? null);
 
   return (
-    <div className="p-6 max-w-[800px] mx-auto space-y-6 animate-fade-in">
+    <div className="p-4 sm:p-6 max-w-[800px] mx-auto space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-muted-foreground mt-1">Manage your account and preferences.</p>

@@ -34,8 +34,6 @@ export function KnowledgeList() {
   const { data: response, isLoading } = useQuery({
     queryKey: ['documents', searchQuery],
     queryFn: () => documentsApi.getAll({ q: searchQuery }),
-    // Live-refresh while any document is still being ingested so its status
-    // transitions to Ready/Failed without a manual reload.
     refetchInterval: (query) =>
       (query.state.data?.items ?? []).some((d) => isDocumentProcessing(d.status)) ? 4000 : false,
   });
@@ -85,40 +83,46 @@ export function KnowledgeList() {
 
   return (
     <>
-      <div className="border rounded-md">
-        <Table>
+      <div className="border rounded-md overflow-x-auto w-full">
+        <Table className="min-w-full">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-12 text-center"></TableHead>
+              <TableHead className="w-10 sm:w-12 text-center"></TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead className="text-right">Uploaded</TableHead>
-              <TableHead className="w-12"></TableHead>
+              <TableHead className="hidden sm:table-cell">Type</TableHead>
+              <TableHead className="hidden md:table-cell">Size</TableHead>
+              <TableHead className="hidden lg:table-cell text-right">Uploaded</TableHead>
+              <TableHead className="w-10 sm:w-12"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {documents.map((doc: DocumentMetadata) => (
               <TableRow key={doc.id} className="cursor-pointer hover:bg-accent/50">
-                <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                <TableCell className="text-center w-10 sm:w-12" onClick={(e) => e.stopPropagation()}>
                   <Checkbox
                     checked={selectedIds.includes(doc.id)}
                     onCheckedChange={() => toggleSelection(doc.id)}
                     aria-label={`Select ${doc.filename}`}
                   />
                 </TableCell>
-                <TableCell className="font-medium" onClick={() => navigate(`/documents/${doc.id}`)}>
+                <TableCell
+                  className="font-medium max-w-[150px] sm:max-w-[220px] md:max-w-xs truncate"
+                  onClick={() => navigate(`/documents/${doc.id}`)}
+                  title={doc.filename}
+                >
                   {doc.filename}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={documentStatusVariant(doc.status)}>
+                  <Badge variant={documentStatusVariant(doc.status)} className="text-[10px] sm:text-xs">
                     {documentStatusLabel(doc.status).toUpperCase()}
                   </Badge>
                 </TableCell>
-                <TableCell className="uppercase text-xs font-mono">{doc.file_type}</TableCell>
-                <TableCell className="text-muted-foreground text-sm tabular-nums">{formatBytes(doc.file_size)}</TableCell>
-                <TableCell className="text-right text-muted-foreground text-sm">
+                <TableCell className="hidden sm:table-cell uppercase text-xs font-mono">{doc.file_type}</TableCell>
+                <TableCell className="hidden md:table-cell text-muted-foreground text-sm tabular-nums">
+                  {formatBytes(doc.file_size)}
+                </TableCell>
+                <TableCell className="hidden lg:table-cell text-right text-muted-foreground text-sm">
                   {(() => {
                     try {
                       return format(new Date(doc.created_at), 'MMM d, yyyy');
@@ -127,7 +131,7 @@ export function KnowledgeList() {
                     }
                   })()}
                 </TableCell>
-                <TableCell onClick={(e) => e.stopPropagation()}>
+                <TableCell className="w-10 sm:w-12" onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Document options">

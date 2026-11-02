@@ -49,27 +49,29 @@ export function ObservabilityDashboard() {
   const formatTokens = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
 
   return (
-    <div className="flex flex-col h-full p-6 overflow-y-auto animate-fade-in">
+    <div className="flex flex-col h-full p-4 sm:p-6 overflow-y-auto animate-fade-in">
       <div className="mb-6">
         <h1 className="text-xl font-semibold tracking-tight">Analytics</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Monitor retrieval quality and LLM performance.</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full space-y-6">
-        <TabsList className="grid w-full grid-cols-4 max-w-xl">
-          <TabsTrigger value="overview" className="gap-1.5 text-xs">
-            <Activity className="h-3.5 w-3.5" /> Overview
-          </TabsTrigger>
-          <TabsTrigger value="retrieval" className="gap-1.5 text-xs">
-            <Database className="h-3.5 w-3.5" /> Retrieval
-          </TabsTrigger>
-          <TabsTrigger value="llm" className="gap-1.5 text-xs">
-            <TerminalSquare className="h-3.5 w-3.5" /> LLM
-          </TabsTrigger>
-          <TabsTrigger value="experiments" className="gap-1.5 text-xs">
-            <GitBranch className="h-3.5 w-3.5" /> Experiments
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto no-scrollbar pb-1">
+          <TabsList className="flex w-max sm:grid sm:w-full sm:grid-cols-4 sm:max-w-xl">
+            <TabsTrigger value="overview" className="gap-1.5 text-xs px-3 sm:px-2">
+              <Activity className="h-3.5 w-3.5" /> Overview
+            </TabsTrigger>
+            <TabsTrigger value="retrieval" className="gap-1.5 text-xs px-3 sm:px-2">
+              <Database className="h-3.5 w-3.5" /> Retrieval
+            </TabsTrigger>
+            <TabsTrigger value="llm" className="gap-1.5 text-xs px-3 sm:px-2">
+              <TerminalSquare className="h-3.5 w-3.5" /> LLM
+            </TabsTrigger>
+            <TabsTrigger value="experiments" className="gap-1.5 text-xs px-3 sm:px-2">
+              <GitBranch className="h-3.5 w-3.5" /> Experiments
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="overview" className="m-0 space-y-6">
           {isError ? (
@@ -79,7 +81,7 @@ export function ObservabilityDashboard() {
           ) : (
             <>
               {/* Key Metrics */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <StatCard
                   title="Total Requests"
                   value={analytics ? String(analytics.total_requests) : '0'}
