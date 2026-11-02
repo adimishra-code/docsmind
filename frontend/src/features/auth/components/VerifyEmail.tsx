@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router';
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { useSearchParams, Link } from 'react-router';
+import { Loader2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function VerifyEmail() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const token = searchParams.get('token');
   const [status, setStatus] = useState<'verifying' | 'error'>('verifying');
   const [errorMessage, setErrorMessage] = useState<string>('Verification link is invalid or expired.');

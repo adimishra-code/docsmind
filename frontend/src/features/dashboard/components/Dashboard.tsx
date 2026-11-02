@@ -2,7 +2,6 @@ import React from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatGrid } from '@/components/analytics/StatGrid';
 import { documentsApi, isDocumentProcessing } from '@/services/documentsApi';
