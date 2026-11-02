@@ -40,6 +40,9 @@ interface ContextState {
   isContextPanelOpen: boolean;
   /** Whether the left-hand conversation list panel is expanded. */
   isConversationPanelOpen: boolean;
+  /** Mobile-only slide-over drawer states (never auto-open on load/resize) */
+  isMobileChatsOpen: boolean;
+  isMobileContextOpen: boolean;
 
   pinDocument: (doc: DocumentMetadata) => void;
   unpinDocument: (id: string) => void;
@@ -48,6 +51,10 @@ interface ContextState {
   setContextPanelOpen: (isOpen: boolean) => void;
   toggleConversationPanel: () => void;
   setConversationPanelOpen: (isOpen: boolean) => void;
+  setMobileChatsOpen: (isOpen: boolean) => void;
+  setMobileContextOpen: (isOpen: boolean) => void;
+  toggleMobileChats: () => void;
+  toggleMobileContext: () => void;
 }
 
 const initialPrefs = loadPanelPrefs();
@@ -56,6 +63,8 @@ export const useContextStore = create<ContextState>((set, get) => ({
   pinnedDocuments: [],
   isContextPanelOpen: initialPrefs.context,
   isConversationPanelOpen: initialPrefs.conversations,
+  isMobileChatsOpen: false,
+  isMobileContextOpen: false,
 
   pinDocument: (doc) => set((state) => {
     if (state.pinnedDocuments.some(d => d.id === doc.id)) return state;
@@ -85,4 +94,9 @@ export const useContextStore = create<ContextState>((set, get) => ({
     savePanelPrefs({ context: get().isContextPanelOpen, conversations: isOpen });
     set({ isConversationPanelOpen: isOpen });
   },
+
+  setMobileChatsOpen: (isOpen) => set({ isMobileChatsOpen: isOpen }),
+  setMobileContextOpen: (isOpen) => set({ isMobileContextOpen: isOpen }),
+  toggleMobileChats: () => set((state) => ({ isMobileChatsOpen: !state.isMobileChatsOpen })),
+  toggleMobileContext: () => set((state) => ({ isMobileContextOpen: !state.isMobileContextOpen })),
 }));

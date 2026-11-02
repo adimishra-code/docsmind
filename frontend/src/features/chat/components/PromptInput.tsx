@@ -7,12 +7,28 @@ import { useChatStream } from '../hooks/useChatStream';
 import { useContextStore } from '@/store/useContextStore';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export function PromptInput() {
   const [prompt, setPrompt] = useState('');
   const { isStreaming, addMessage } = useConversationStore();
   const { streamChat, abortStream } = useChatStream();
-  const { isContextPanelOpen, toggleContextPanel } = useContextStore();
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const {
+    isContextPanelOpen,
+    toggleContextPanel,
+    isMobileContextOpen,
+    toggleMobileContext,
+  } = useContextStore();
+
+  const isContextOpen = isDesktop ? isContextPanelOpen : isMobileContextOpen;
+  const handleToggleContext = () => {
+    if (isDesktop) {
+      toggleContextPanel();
+    } else {
+      toggleMobileContext();
+    }
+  };
   const formRef = useRef<HTMLFormElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -54,15 +70,15 @@ export function PromptInput() {
               type="button"
               variant="ghost"
               size="icon"
-              onClick={toggleContextPanel}
+              onClick={handleToggleContext}
               className="shrink-0 h-9 w-9 text-muted-foreground hover:text-foreground mb-0.5"
               aria-label="Toggle context panel"
             >
-              {isContextPanelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+              {isContextOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
-            {isContextPanelOpen ? 'Close context panel' : 'Open context panel'}
+            {isContextOpen ? 'Close context panel' : 'Open context panel'}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

@@ -2,12 +2,16 @@ import React from 'react';
 import { useContextStore } from '@/store/useContextStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { formatBytes } from '@/utils';
+import { formatBytes, cn } from '@/utils';
 import { X, FileText, BookOpen, PanelRightClose, Files } from 'lucide-react';
 
 const CONTEXT_WINDOW_TOKENS = 128_000;
 
-export function ContextManager() {
+interface ContextManagerProps {
+  hideCloseButton?: boolean;
+}
+
+export function ContextManager({ hideCloseButton = false }: ContextManagerProps) {
   const { pinnedDocuments, unpinDocument, clearContext, toggleContextPanel } = useContextStore();
   const estimatedTokens = pinnedDocuments.reduce(
     (acc, doc) => acc + ((doc.file_size ?? 0) * 0.25),
@@ -18,7 +22,10 @@ export function ContextManager() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 h-14 border-b shrink-0">
+      <div className={cn(
+        "flex items-center justify-between px-4 h-14 border-b shrink-0",
+        hideCloseButton && "pr-12"
+      )}>
         <div className="flex items-center gap-2">
           <BookOpen className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
           <span className="text-sm font-medium">Context</span>
@@ -39,15 +46,17 @@ export function ContextManager() {
               Clear all
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleContextPanel}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground -mr-2"
-            aria-label="Close context panel"
-          >
-            <PanelRightClose className="h-4 w-4" />
-          </Button>
+          {!hideCloseButton && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleContextPanel}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground -mr-2"
+              aria-label="Close context panel"
+            >
+              <PanelRightClose className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 

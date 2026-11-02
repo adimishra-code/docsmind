@@ -41,6 +41,7 @@ import { formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 
 interface ConversationSidebarProps {
   onSessionChange?: (sessionId: string) => void;
+  hideCollapseButton?: boolean;
 }
 
 function getGroupLabel(dateStr: string): string {
@@ -164,7 +165,7 @@ function SessionItem({ session, isActive, onSelect, onRename, onPin, onDelete }:
   );
 }
 
-export function ConversationSidebar({ onSessionChange }: ConversationSidebarProps) {
+export function ConversationSidebar({ onSessionChange, hideCollapseButton = false }: ConversationSidebarProps) {
   const { id: activeId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -254,7 +255,10 @@ export function ConversationSidebar({ onSessionChange }: ConversationSidebarProp
     <TooltipProvider>
       <div className="flex flex-col h-full bg-card border-r">
         {/* Header */}
-        <div className="flex items-center justify-between h-14 px-3 border-b shrink-0">
+        <div className={cn(
+          "flex items-center justify-between h-14 px-3 border-b shrink-0",
+          hideCollapseButton && "pr-12"
+        )}>
           <span className="text-sm font-semibold text-foreground">Conversations</span>
           <div className="flex items-center gap-0.5">
             <Tooltip>
@@ -272,20 +276,22 @@ export function ConversationSidebar({ onSessionChange }: ConversationSidebarProp
               </TooltipTrigger>
               <TooltipContent>New chat</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={toggleConversationPanel}
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  aria-label="Collapse conversation panel"
-                >
-                  <PanelLeftClose className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Collapse panel</TooltipContent>
-            </Tooltip>
+            {!hideCollapseButton && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleConversationPanel}
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    aria-label="Collapse conversation panel"
+                  >
+                    <PanelLeftClose className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Collapse panel</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
 

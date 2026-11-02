@@ -27,6 +27,12 @@ export function AIWorkspace() {
     toggleContextPanel,
     setConversationPanelOpen,
     setContextPanelOpen,
+    isMobileChatsOpen,
+    isMobileContextOpen,
+    setMobileChatsOpen,
+    setMobileContextOpen,
+    toggleMobileChats,
+    toggleMobileContext,
     pinnedDocuments,
   } = useContextStore();
 
@@ -137,7 +143,7 @@ export function AIWorkspace() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={toggleConversationPanel}
+            onClick={toggleMobileChats}
             className="h-8 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
             aria-label="Open chats drawer"
           >
@@ -148,7 +154,7 @@ export function AIWorkspace() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={toggleContextPanel}
+            onClick={toggleMobileContext}
             className="h-8 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
             aria-label="Open context drawer"
           >
@@ -168,16 +174,19 @@ export function AIWorkspace() {
         </div>
 
         {/* Mobile Slide-Over Sheets */}
-        <Sheet open={isConversationPanelOpen} onOpenChange={setConversationPanelOpen}>
+        <Sheet open={isMobileChatsOpen} onOpenChange={setMobileChatsOpen}>
           <SheetContent side="left" className="p-0 w-[300px] sm:w-[360px]">
-            <ConversationSidebar onSessionChange={() => setConversationPanelOpen(false)} />
+            <ConversationSidebar
+              hideCollapseButton
+              onSessionChange={() => setMobileChatsOpen(false)}
+            />
           </SheetContent>
         </Sheet>
 
-        <Sheet open={isContextPanelOpen} onOpenChange={setContextPanelOpen}>
+        <Sheet open={isMobileContextOpen} onOpenChange={setMobileContextOpen}>
           <SheetContent side="right" className="p-0 w-[300px] sm:w-[360px]">
             <div className="h-full bg-muted/30">
-              <ContextManager />
+              <ContextManager hideCloseButton />
             </div>
           </SheetContent>
         </Sheet>
